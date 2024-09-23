@@ -1,0 +1,95 @@
+{
+  "name": "WorldsFactorySupport",
+  "displayName": "WorldsFactorySupport",
+  "description": "This is a tool that enhances the story creation process according the WorldsFactory structure.",
+  "version": "0.0.1",
+  "publisher": "worlds-factory-extension-1",
+  "engines": {
+    "vscode": "^1.93.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "WorldsFactorySupport.createLocation",
+        "title": "WF: Create Location"
+      },
+      {
+        "command": "WorldsFactorySupport.removeLocation",
+        "title": "WF: Remove Location"
+      },
+      {
+        "command": "WorldsFactorySupport.createCharacter",
+        "title": "WF: Create Character"
+      },
+      {
+        "command": "WorldsFactorySupport.removeCharacter",
+        "title": "WF: Remove Character"
+      }, 
+      {
+        "command": "WorldsFactorySupport.createItem",
+        "title": "WF: Create Item"
+      },
+      {
+        "command": "WorldsFactorySupport.removeItem",
+        "title": "WF: Remove Item"
+      },
+      {
+        "command": "WorldsFactorySupport.createSideCharacter",
+        "title": "WF: Create Side Character"
+      },
+      {
+        "command": "WorldsFactorySupport.removeSideCharacter",
+        "title": "WF: Remove Side Character"
+      },
+      {
+        "command": "WorldsFactorySupport.createEvent",
+        "title": "WF: Create Event"
+      },
+      {
+        "command": "WorldsFactorySupport.removeEvent",
+        "title": "WF: Remove Event"
+      },
+      {
+        "command": "WorldsFactorySupport.createPassage",
+        "title": "WF: Create Passage"
+      },
+      {
+        "command": "WorldsFactorySupport.removePassage",
+        "title": "WF: Remove Passage"
+      }
+      
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "yarn run package",
+    "compile": "yarn run check-types && yarn run lint && node esbuild.js",
+    "watch": "npm-run-all -p watch:*",
+    "watch:esbuild": "node esbuild.js --watch",
+    "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
+    "package": "yarn run check-types && yarn run lint && node esbuild.js --production",
+    "compile-tests": "tsc -p . --outDir out",
+    "watch-tests": "tsc -p . -w --outDir out",
+    "pretest": "yarn run compile-tests && yarn run compile && yarn run lint",
+    "check-types": "tsc --noEmit",
+    "lint": "eslint src",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.93.0",
+    "@types/mocha": "^10.0.7",
+    "@types/node": "20.x",
+    "@typescript-eslint/eslint-plugin": "^8.3.0",
+    "@typescript-eslint/parser": "^8.3.0",
+    "eslint": "^9.9.1",
+    "esbuild": "^0.23.1",
+    "npm-run-all": "^4.1.5",
+    "typescript": "^5.5.4",
+    "@vscode/test-cli": "^0.0.10",
+    "@vscode/test-electron": "^2.4.1"
+  }
+}
