@@ -2,8 +2,9 @@
   "name": "WorldsFactorySupport",
   "displayName": "WorldsFactorySupport",
   "description": "This is a tool that enhances the story creation process according the WorldsFactory structure.",
-  "version": "0.0.1",
+  "version": "0.0.12",
   "publisher": "worlds-factory-extension-1",
+  "icon": "resources/icon.jpeg",
   "engines": {
     "vscode": "^1.93.0"
   },
