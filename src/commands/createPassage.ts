@@ -1,11 +1,12 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { addObjectToOtherObject, doesIdExistsInFolder } from '../WorkWithText';
-import { passageFilePostfix, passageFilePostfixWithoutFileType, locationsDir, registerFilePath, worldStateFilePath, eventsDir, charactersDir } from '../Paths';
+import { addObjectToOtherObject, addObjectToOtherObjectWithEquals, doesIdExistsInFolder } from '../WorkWithText';
+import { passageFilePostfix, eventsDir, charactersDir, eventFilePostfix, eventFilePostfixWithoutFileType } from '../Paths';
 import { createScreenPassage } from './passages/createScreenPassage';
 import { createLinearDescriberPassage } from './passages/createLinearDescriberPassage';
 import { createTransitionPassage } from './passages/createTransitionPassage';
+import { eventPassagesPropertyName } from './createEvent';
 
 export const containerObjectName = 'passages';
 export const type = 'Passage';
@@ -14,6 +15,10 @@ export enum PassageType {
     Screen = 'Screen',
     Transition = 'Transition',
     LinearDescriber = 'Linear Describer',
+};
+
+export const passagesImportString = (passageId: string, passageFileNameWithoutPostfix: string, characterId: string): string => {
+    return `import { ${passageId}Passage } from './${characterId}.${containerObjectName}/${passageFileNameWithoutPostfix}';\n`;
 };
 
 
@@ -40,6 +45,14 @@ export const createPassage = async (context: vscode.ExtensionContext) => {
     if (!fs.existsSync(folderPathOfSelectedEvent)) {
         return vscode.window.showErrorMessage('Event folder does not exist.');
     }
+
+    // Check if the events file exists
+    const eventFilePath = path.join(folderPathOfSelectedEvent, selectedEvent + eventFilePostfix);
+    
+    if (!fs.existsSync(eventFilePath)) {
+        return vscode.window.showErrorMessage(`Event file ${eventFilePath} does not exist.`);
+    }
+    
 
 
     // Select a character
@@ -82,14 +95,11 @@ export const createPassage = async (context: vscode.ExtensionContext) => {
     }
 
 
-
-
     // Ask for passage type
     const selectedPassageType = await vscode.window.showQuickPick(Object.values(PassageType), {
         placeHolder: 'Select a type for the new passage',
     });
 
-    const passageIdWithCapital = passageId.charAt(0).toUpperCase() + passageId.slice(1);
 
 
 
@@ -119,12 +129,38 @@ export const createPassage = async (context: vscode.ExtensionContext) => {
     }
     
     // Create the new passage file
-    const passageFilePath = path.join(folderPathOfSelectedCharacter, `${passageId}.${selectedPassageType.toLowerCase()}${passageFilePostfix}`);
+    const passageFileNameWithoutPostfix = `${passageId}.${selectedPassageType.toLowerCase().replace(' ', '-')}`;
+    const passageFileName = passageFileNameWithoutPostfix + passageFilePostfix;
+    const passageFilePath = path.join(folderPathOfSelectedCharacter, passageFileName);
     fs.writeFile(passageFilePath, newPassageContent, (err) => {
         if (err) {
             return vscode.window.showErrorMessage('Failed to create new location file!');
         }
     });
+
+
+
+
+
+    // Update event file with passage id
+
+    // Read the event file
+    let eventFileData = fs.readFileSync(eventFilePath, 'utf8');
+
+    // Add the passage id to the event file, to the eventEventPassages object
+    const fullPassageId = `${selectedEvent}-${selectedCharacter}-${passageId}`;
+    let updateEventFileContent = await addObjectToOtherObjectWithEquals(eventPassagesPropertyName(selectedEvent), eventFileData, `'${fullPassageId}': ${passageId}Passage`);
+
+    // Add import statement
+    updateEventFileContent = passagesImportString(passageId, passageFileNameWithoutPostfix, selectedCharacter) + updateEventFileContent;
+
+    fs.writeFile(eventFilePath, updateEventFileContent, (err) => {
+        if (err) {
+            return vscode.window.showErrorMessage('Failed to update event file!');
+        }
+    });
+
+
 
 
 

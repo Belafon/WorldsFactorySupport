@@ -1,10 +1,9 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { removeFile, removeFolder, removeObjectFromOtherObject, removeTextFromFile } from '../WorkWithText';
-import { eventFilePostfix, eventsDir, worldStateFilePath } from '../Paths';
-import { registerFilePath } from '../Paths';
-import { containerObjectName } from './createEvent';
+import { removeFile, removeFolder, removeLineByMatch, removeTextFromFile } from '../WorkWithText';
+import { eventFilePostfix, eventsDir } from '../Paths';
+import { passagesImportString } from './createPassage';
 
 export const removePassage = async (context: vscode.ExtensionContext) => {
     if (!vscode.workspace.workspaceFolders) {
@@ -47,16 +46,16 @@ export const removePassage = async (context: vscode.ExtensionContext) => {
     const passageFiles = fs.readdirSync(passagesDir).filter(file => file.endsWith('.ts'));
     const passageNames = passageFiles.map(file => path.basename(file, '.ts'));
 
-    const selectedPassage = await vscode.window.showQuickPick(passageNames, {
+    const passageFileNameWithoutFileType = await vscode.window.showQuickPick(passageNames, {
         placeHolder: 'Select a passage to remove',
     });
 
-    if (!selectedPassage) {
+    if (!passageFileNameWithoutFileType) {
         return vscode.window.showInformationMessage('No passage selected for removal.');
     }
 
     // Remove passage file
-    const passageFilePath = path.join(passagesDir, `${selectedPassage}.ts`);
+    const passageFilePath = path.join(passagesDir, `${passageFileNameWithoutFileType}.ts`);
     
     // Check if the character folder contains only one passage file
     if(fs.readdirSync(passagesDir).length === 1){
@@ -64,4 +63,24 @@ export const removePassage = async (context: vscode.ExtensionContext) => {
     } else {
         removeFile(passageFilePath);
     }
+    
+    
+    
+    // Remove data from the event file
+    
+    const eventFilePath = path.join(eventsDir(), selectedEvent, selectedEvent + eventFilePostfix);
+    
+    if (!fs.existsSync(eventFilePath)) {
+        return vscode.window.showErrorMessage(`Event file ${eventFilePath} does not exist.`);
+    }
+
+    let eventData = fs.readFileSync(eventFilePath, 'utf-8');
+    const passageId = passageFileNameWithoutFileType.split('.')[0];
+    eventData = await removeTextFromFile(eventData, passagesImportString(passageId, passageFileNameWithoutFileType, selectedCharacter));
+    
+    // remove line from the event file
+    const fullPassageId = `${selectedEvent}-${selectedCharacter}-${passageId}`;
+    eventData = removeLineByMatch(eventData, fullPassageId);
+
+    fs.writeFileSync(eventFilePath, eventData);
 };

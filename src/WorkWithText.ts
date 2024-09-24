@@ -6,13 +6,22 @@ export const addObjectToOtherObject = async (parentObjectName: string, data: str
     const regex = new RegExp(`(?<![a-zA-Z0-9])${parentObjectName}:\\s*{((?:{[^{}]*}|[^{}])*)}`);
 
     const updatedData = data.replace(regex, (match, innerCode) => {
-        return insertNewCodeIntoObjectsContent(innerCode, contentToInsert, match, parentObjectName);
+        return insertNewCodeIntoObjectsContent(innerCode, contentToInsert, match, parentObjectName, false);
     });
 
     return updatedData;
 };
 
-function insertNewCodeIntoObjectsContent(innerCode: string, contentToInsert: string, match: string, parentObjectName: string): string {
+export const addObjectToOtherObjectWithEquals = async (parentObjectName: string, data: string, contentToInsert: string): Promise<string> => {
+    const regex = new RegExp(`(?<![a-zA-Z0-9])${parentObjectName}\\s*=\\s*{((?:{[^{}]*}|[^{}])*)}`);
+    const updatedData = data.replace(regex, (match, innerCode) => {
+        return insertNewCodeIntoObjectsContent(innerCode, contentToInsert, match, parentObjectName, true);
+    });
+
+    return updatedData;
+}
+
+function insertNewCodeIntoObjectsContent(innerCode: string, contentToInsert: string, match: string, parentObjectName: string, hasEquals: boolean): string {
     const trimmedContent = innerCode.trim();
 
 
@@ -49,6 +58,9 @@ function insertNewCodeIntoObjectsContent(innerCode: string, contentToInsert: str
     const closingBracket = objectDepth + '}';
 
     // reconstruct the object with proper formatting
+    if(hasEquals){
+        return `${parentObjectName} = {\n${innerCode}${contentToInsert}${closingBracket}`;
+    } 
     return `${parentObjectName}: {\n${innerCode}${contentToInsert}${closingBracket}`;
 }
 
@@ -135,4 +147,10 @@ export const doesIdExistsInFolder = (folderPath: string, id: string): boolean =>
         const currentFileName = file.split('.')[0].toLowerCase();
         return currentFileName === id.toLowerCase();
     });
+};
+
+
+
+export const removeLineByMatch = (data: string, match: string) => {
+    return data.split('\n').filter(line => !line.includes(match)).join('\n');
 };

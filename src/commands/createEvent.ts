@@ -4,16 +4,20 @@ import * as path from 'path';
 import { addObjectToOtherObject, doesIdExistsInFolder } from '../WorkWithText';
 import { eventsDir, eventFilePostfix, eventFilePostfixWithoutFileType, locationsDir, registerFilePath, worldStateFilePath } from '../Paths';
 
-export const eventsDataImportString = (selectedEvent: string, selectedEventWithCapital: string) => {
+export const eventsDataImportString = (selectedEvent: string, selectedEventWithCapital: string): string => {
     return `import { T${selectedEventWithCapital}${type}Data } from './${containerObjectName}/${selectedEvent}/${selectedEvent}${eventFilePostfixWithoutFileType}';\n`;
 };
 
-export const eventsImportingString = (eventId: string) => {
-    return `import { ${eventId}${type}, ${eventId}${type}Passages } from './${containerObjectName}/${eventId}/${eventId}${eventFilePostfixWithoutFileType}';\n`;
+export const eventsImportingString = (eventId: string): string => {
+    return `import { ${eventId}${type}, ${eventPassagesPropertyName(eventId)} } from './${containerObjectName}/${eventId}/${eventId}${eventFilePostfixWithoutFileType}';\n`;
 };
 
 export const containerObjectName = 'events';
 export const type = 'Event';
+
+export const eventPassagesPropertyName = (eventId: string): string => {
+    return `${eventId}EventPassages`;
+}; 
 
 export const createEvent = async (context: vscode.ExtensionContext) => {
 
@@ -62,13 +66,12 @@ export type T${eventIdWithCapital}EventData = {
 \t
 };
 
-export const ${eventId}EventPassages = {
+export const ${eventPassagesPropertyName(eventId)} = {
 \t
 } as const;
 
 // test
-Object.values(${eventId}EventPassages).forEach((item: () => TEventPassage<'${eventId}'>) => void item);
-
+Object.values(${eventPassagesPropertyName(eventId)}).forEach((item: () => TEventPassage<'${eventId}'>) => void item);
 `;
 
     // add new folder in events
@@ -89,7 +92,7 @@ Object.values(${eventId}EventPassages).forEach((item: () => TEventPassage<'${eve
 
     registerFileData = eventsImportingString(eventId) + registerFileData;
     let updatedData = await addObjectToOtherObject(containerObjectName, registerFileData, `${eventId}: ${eventId}${type}`);
-    updatedData = await addObjectToOtherObject("passages", updatedData,  `...${eventId}EventPassages`);
+    updatedData = await addObjectToOtherObject("passages", updatedData,  `...${eventPassagesPropertyName(eventId)}`);
 
     await fs.promises.writeFile(registerFilePath(), updatedData);
 

@@ -1,7 +1,5 @@
 import path from 'path';
 import * as vscode from 'vscode';
-import * as fs from 'fs';
-import { removeObjectFromOtherObject, removeTextFromFile } from './WorkWithText';
 
 export const workspaceFolders = () => {
     if(!vscode.workspace.workspaceFolders){
@@ -30,4 +28,3 @@ export const eventsDir = () => path.join(workspaceFolders()!, 'src', 'data', 'ev
 
 
 export const passageFilePostfix = '.ts';
-export const passageFilePostfixWithoutFileType = '';

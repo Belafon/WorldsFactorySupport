@@ -14,7 +14,7 @@ export const createScreenPassage = async (context: vscode.ExtensionContext,
     return `import { DeltaTime } from 'time/Time';
 import { TPassage } from 'types/TPassage';
 
-export const introPassage = (): TPassage<'${selectedEvent}', '${selectedCharacter}'> => ({
+export const ${passageId}Passage = (): TPassage<'${selectedEvent}', '${selectedCharacter}'> => ({
     eventId: '${selectedEvent}',
     characterId: '${selectedCharacter}',
     id: '${passageId}',
