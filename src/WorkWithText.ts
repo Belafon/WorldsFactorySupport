@@ -118,9 +118,6 @@ function removeObjectFromContent(innerCode: string, objectNameToRemove: string, 
 
 
 
-
-
-
 export async function removeTextFromFile(data: string, textToRemove: string): Promise<string> {
     return data.replace(textToRemove, '');
 }
@@ -176,4 +173,32 @@ export const doesIdExistsInFolder = (folderPath: string, id: string): boolean =>
 
 export const removeLineByMatch = (data: string, match: string) => {
     return data.split('\n').filter(line => !line.includes(match)).join('\n');
+};
+
+
+/**
+ * cannot start with a number, has to have at least one character
+ * can contain '-' and '_'
+ */
+export const isIdValid = (id: string): boolean => {
+    return /^[a-zA-Z][a-zA-Z0-9_-]*$/.test(id);
+};
+
+export const askForId = async (placeHolder: string, prompt: string): Promise<string | undefined> => {
+    let id: string | undefined = '';
+    while (!isIdValid(id)) {
+        id = await vscode.window.showInputBox({
+            placeHolder,
+            prompt,
+        });
+
+        if (id === undefined) {
+            return undefined;
+        }
+
+        if (!isIdValid(id)) {
+            vscode.window.showErrorMessage('Invalid id. Id cannot start with a number and has to contain at least one character.');
+        }
+    }
+    return id;
 };

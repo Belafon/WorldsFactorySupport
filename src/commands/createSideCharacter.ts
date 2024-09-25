@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { addObjectToOtherObject, doesIdExistsInFolder } from '../WorkWithText';
+import { addObjectToOtherObject, askForId, doesIdExistsInFolder, isIdValid } from '../WorkWithText';
 import { sideCharacterDir, registerFilePath, worldStateFilePath } from '../Paths';
 
 export const characterDataImportString = (characterIdWithCapital: string, characterId: string) => {
@@ -33,13 +33,10 @@ export const createSideCharacter = async (context: vscode.ExtensionContext) => {
         vscode.window.showErrorMessage(`A character with the name "${characterName}" already exists.`);
 
         // Ask for the character ID
-        const possibleNewCharacterId = await vscode.window.showInputBox({
-            placeHolder: 'Enter side character ID (e.g., thomas)',
-            prompt: 'Provide the ID for the new side character.',
-        });
+        const possibleNewCharacterId = await askForId('Enter side character ID (e.g., thomas)', 'Provide the ID for the new side character.');
 
         if (!possibleNewCharacterId) {
-            return vscode.window.showErrorMessage('You must provide a character ID.');
+            return;
         }
 
         if (doesIdExistsInFolder(sideCharacterDir(), possibleNewCharacterId)) {

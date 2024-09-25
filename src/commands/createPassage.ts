@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { addObjectToOtherObjectWithEquals, doesIdExistsInFolder } from '../WorkWithText';
+import { addObjectToOtherObjectWithEquals, askForId, doesIdExistsInFolder, isIdValid } from '../WorkWithText';
 import { passageFilePostfix, eventsDir, charactersDir, eventFilePostfix, eventFilePostfixWithoutFileType } from '../Paths';
 import { createScreenPassage } from './passages/createScreenPassage';
 import { createLinearDescriberPassage } from './passages/createLinearDescriberPassage';
@@ -79,13 +79,10 @@ export const createPassage = async (context: vscode.ExtensionContext) => {
     // Get passage id
 
     // Ask for the passage id
-    const passageId = await vscode.window.showInputBox({
-        placeHolder: 'Enter passage id',
-        prompt: 'Provide the id for the new passage.',
-    });
+    const passageId = await askForId('Enter passage id', 'Provide the id for the new passage.');
 
     if (!passageId) {
-        return vscode.window.showErrorMessage('You must provide an passage id.');
+        return;
     }
 
     // now check if a passage with the same name already exists

@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { addObjectToOtherObject, doesIdExistsInFolder } from '../WorkWithText';
+import { addObjectToOtherObject, askForId, doesIdExistsInFolder, isIdValid } from '../WorkWithText';
 import { locationFilePostfix, locationFilePostfixWithoutFileType, locationsDir, registerFilePath, worldStateFilePath } from '../Paths';
 
 export const locationDataImportString = (selectedLocation: string, selectedLocationWithCapital: string) => {
@@ -32,13 +32,14 @@ export const createLocation = async (context: vscode.ExtensionContext) => {
     if (doesIdExistsInFolder(locationsDir(), locationName)) {
         vscode.window.showErrorMessage(`A location with the name "${locationName}" already exists.`);
 
-        const possibleNewLocationId = await vscode.window.showInputBox({
-            placeHolder: 'Enter location ID (e.g., newLocation)',
-            prompt: 'Provide the ID for the new location.',
-        });
+        const possibleNewLocationId = await askForId('Enter location ID', 'Provide the ID for the new location.');
 
         if (!possibleNewLocationId) {
-            return vscode.window.showErrorMessage('You must provide a location ID.');
+            return;
+        }
+
+        if (!isIdValid(possibleNewLocationId)) {
+            return vscode.window.showErrorMessage('Invalid location ID. It must be a valid TypeScript identifier.');
         }
 
 

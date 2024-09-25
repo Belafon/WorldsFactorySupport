@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { addObjectToOtherObject, doesIdExistsInFolder } from '../WorkWithText';
+import { addObjectToOtherObject, askForId, doesIdExistsInFolder, isIdValid } from '../WorkWithText';
 import { eventsDir, eventFilePostfix, eventFilePostfixWithoutFileType, locationsDir, registerFilePath, worldStateFilePath } from '../Paths';
 
 export const eventsDataImportString = (selectedEvent: string, selectedEventWithCapital: string): string => {
@@ -21,16 +21,11 @@ export const eventPassagesPropertyName = (eventId: string): string => {
 
 export const createEvent = async (context: vscode.ExtensionContext) => {
 
-    // Ask for the location name
-    const eventId = await vscode.window.showInputBox({
-        placeHolder: 'Enter event id',
-        prompt: 'Provide the id for the new event.',
-    });
+    const eventId = await askForId('Enter event id', 'Provide the id for the new event.'); 
 
     if (!eventId) {
-        return vscode.window.showErrorMessage('You must provide an event id.');
+        return;
     }
-
 
     // now check if a location with the same name already exists
     if (doesIdExistsInFolder(locationsDir(), eventId)) {
