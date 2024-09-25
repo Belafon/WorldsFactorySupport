@@ -2,26 +2,42 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 
 
-export const addObjectToOtherObject = async (parentObjectName: string, data: string, contentToInsert: string): Promise<string> => {
+export const addObjectToOtherObject = async (
+    parentObjectName: string, 
+    data: string, 
+    contentToInsert: string,
+    hasSemicolon: boolean): Promise<string> => {
+    
     const regex = new RegExp(`(?<![a-zA-Z0-9])${parentObjectName}:\\s*{((?:{[^{}]*}|[^{}])*)}`);
 
     const updatedData = data.replace(regex, (match, innerCode) => {
-        return insertNewCodeIntoObjectsContent(innerCode, contentToInsert, match, parentObjectName, false);
+        return insertNewCodeIntoObjectsContent(innerCode, contentToInsert, match, parentObjectName, false, hasSemicolon);
     });
 
     return updatedData;
 };
 
-export const addObjectToOtherObjectWithEquals = async (parentObjectName: string, data: string, contentToInsert: string): Promise<string> => {
+export const addObjectToOtherObjectWithEquals = async (
+    parentObjectName: string, 
+    data: string, 
+    contentToInsert: string,
+    hasSemicolon: boolean): Promise<string> => {
     const regex = new RegExp(`(?<![a-zA-Z0-9])${parentObjectName}\\s*=\\s*{((?:{[^{}]*}|[^{}])*)}`);
     const updatedData = data.replace(regex, (match, innerCode) => {
-        return insertNewCodeIntoObjectsContent(innerCode, contentToInsert, match, parentObjectName, true);
+        return insertNewCodeIntoObjectsContent(innerCode, contentToInsert, match, parentObjectName, true, hasSemicolon);
     });
 
     return updatedData;
-}
+};
 
-function insertNewCodeIntoObjectsContent(innerCode: string, contentToInsert: string, match: string, parentObjectName: string, hasEquals: boolean): string {
+function insertNewCodeIntoObjectsContent(
+    innerCode: string, 
+    contentToInsert: string, 
+    match: string, 
+    parentObjectName: string, 
+    hasEquals: boolean, 
+    hasSemicolon:boolean): string {
+    
     const trimmedContent = innerCode.trim();
 
 
@@ -39,7 +55,12 @@ function insertNewCodeIntoObjectsContent(innerCode: string, contentToInsert: str
     }
 
     // shift the content to insert by the object depth
-    contentToInsert = contentToInsert.split('\n').map((line) => `${objectDepth}\t${line}`).join('\n') + ',\n';
+    contentToInsert = contentToInsert.split('\n').map((line) => `${objectDepth}\t${line}`).join('\n');
+    if(hasSemicolon){
+        contentToInsert += ';\n';
+    } else {
+        contentToInsert += ',\n';
+    }
 
 
     // handle the empty object body as a special case
@@ -50,11 +71,13 @@ function insertNewCodeIntoObjectsContent(innerCode: string, contentToInsert: str
 
     // find out if the last character of the insert code is a comma
     innerCode = innerCode.trim();
-    if (!innerCode.endsWith(',')) {
-        innerCode = innerCode + ',';
+    if(!hasSemicolon){
+        if (!innerCode.endsWith(',')) {
+            innerCode = innerCode + ',';
+        }
     }
     innerCode = objectDepth + '\t' + innerCode + '\n';
-
+    
     const closingBracket = objectDepth + '}';
 
     // reconstruct the object with proper formatting

@@ -50,8 +50,8 @@ export const ${eventId}Event: TEvent<'${eventId}'> = {
 \ttitle: '${eventIdWithCapital} Event',
 \tdescription: '',
 \ttimeRange: {
-\t\tstart: Time.fromS(),
-\t\tend: Time.fromS(),
+\t\tstart: Time.fromString(''),
+\t\tend: Time.fromString(''),
 \t},
 \tlocation: '',
 \t
@@ -91,8 +91,8 @@ Object.values(${eventPassagesPropertyName(eventId)}).forEach((item: () => TEvent
     let registerFileData = await fs.promises.readFile(registerFilePath(), 'utf8');
 
     registerFileData = eventsImportingString(eventId) + registerFileData;
-    let updatedData = await addObjectToOtherObject(containerObjectName, registerFileData, `${eventId}: ${eventId}${type}`);
-    updatedData = await addObjectToOtherObject("passages", updatedData,  `...${eventPassagesPropertyName(eventId)}`);
+    let updatedData = await addObjectToOtherObject(containerObjectName, registerFileData, `${eventId}: ${eventId}${type}`, false);
+    updatedData = await addObjectToOtherObject("passages", updatedData,  `...${eventPassagesPropertyName(eventId)}`, false);
 
     await fs.promises.writeFile(registerFilePath(), updatedData);
 
@@ -106,7 +106,8 @@ Object.values(${eventPassagesPropertyName(eventId)}).forEach((item: () => TEvent
     let updatedWorldStateFileData = await addObjectToOtherObject(
         containerObjectName,
         worldStateFileData,
-        `${eventId}: { ref: T${type}<'${eventId}'> } & Partial<T${eventIdWithCapital}${type}Data>`);
+        `${eventId}: { ref: T${type}<'${eventId}'> } & Partial<T${eventIdWithCapital}${type}Data>`,
+        true);
     updatedWorldStateFileData = eventsDataImportString(eventId, eventIdWithCapital) + updatedWorldStateFileData;
 
     await fs.promises.writeFile(worldStateFilePath(), updatedWorldStateFileData);

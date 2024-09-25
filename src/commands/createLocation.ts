@@ -84,7 +84,8 @@ export type T${locationIdWithCapital}LocationData = {
     let registerFileData = await fs.promises.readFile(registerFilePath(), 'utf8');
 
     registerFileData = locationImportingString(locationId) + registerFileData;
-    const updatedData = await addObjectToOtherObject(containerObjectName, registerFileData, `${locationId}: ${locationId}Location`);
+    const updatedData = await addObjectToOtherObject(
+        containerObjectName, registerFileData, `${locationId}: ${locationId}Location`, false);
 
     await fs.promises.writeFile(registerFilePath(), updatedData);
 
@@ -95,7 +96,8 @@ export type T${locationIdWithCapital}LocationData = {
     let updatedWorldStateFileData = await addObjectToOtherObject(
         containerObjectName,
         worldStateFileData,
-        `${locationId}: { ref: TLocation<'${locationId}'> } & Partial<T${locationIdWithCapital}LocationData>`);
+        `${locationId}: { ref: TLocation<'${locationId}'> } & Partial<T${locationIdWithCapital}LocationData>`,
+        true);
     updatedWorldStateFileData = locationDataImportString(locationId, locationIdWithCapital) + updatedWorldStateFileData;
 
     await fs.promises.writeFile(worldStateFilePath(), updatedWorldStateFileData);

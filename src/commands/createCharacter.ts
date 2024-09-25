@@ -26,7 +26,7 @@ export const createCharacter = async (context: vscode.ExtensionContext) => {
         return vscode.window.showErrorMessage('You must provide a character name.');
     }
 
-    let characterId = characterName;
+    let characterId = characterName.toLowerCase().replace(/\s/g, '-');
 
     // Check if a character with the same name already exists
     if (doesIdExistsInFolder(charactersDir(), characterName)) {
@@ -85,7 +85,8 @@ export type T${characterIdWithCapital}CharacterData = {
 
     let registerFileContent = fs.readFileSync(registerFilePath(), 'utf-8');
     registerFileContent = characterImportString(characterIdWithCapital, characterId) + registerFileContent;
-    const updatedData = await addObjectToOtherObject(containerObjectName, registerFileContent, `${characterName}: ${characterIdWithCapital}`);
+    const updatedData = await addObjectToOtherObject(
+        containerObjectName, registerFileContent, `${characterName}: ${characterIdWithCapital}`, false);
 
     fs.writeFileSync(registerFilePath(), updatedData);
 
@@ -97,7 +98,8 @@ export type T${characterIdWithCapital}CharacterData = {
     worldStateFileContent = await addObjectToOtherObject(
         containerObjectName, 
         worldStateFileContent, 
-        `${characterId}: { ref: TCharacter<'${characterId}'> } & TCharacterData & Partial<T${characterIdWithCapital}CharacterData>`);
+        `${characterId}: { ref: TCharacter<'${characterId}'> } & TCharacterData & Partial<T${characterIdWithCapital}CharacterData>`,
+        true);
 
     fs.writeFileSync(worldStateFilePath(), worldStateFileContent);
 

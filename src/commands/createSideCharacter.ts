@@ -82,7 +82,8 @@ export type T${characterIdWithCapital}SideCharacterData = {
 
     let registerFileContent = fs.readFileSync(registerFilePath(), 'utf-8');
     registerFileContent = characterImportString(characterIdWithCapital, characterId) + registerFileContent;
-    const updatedData = await addObjectToOtherObject(containerObjectName, registerFileContent, `${characterName}: ${characterIdWithCapital}`);
+    const updatedData = await addObjectToOtherObject(
+        containerObjectName, registerFileContent, `${characterName}: ${characterIdWithCapital}`, false);
 
     fs.writeFileSync(registerFilePath(), updatedData);
 
@@ -94,7 +95,8 @@ export type T${characterIdWithCapital}SideCharacterData = {
     worldStateFileContent = await addObjectToOtherObject(
         containerObjectName, 
         worldStateFileContent, 
-        `${characterId}: { ref: TSideCharacter<'${characterId}'> } & TSideCharacterData & Partial<T${characterIdWithCapital}SideCharacterData>`);
+        `${characterId}: { ref: TSideCharacter<'${characterId}'> } & TSideCharacterData & Partial<T${characterIdWithCapital}SideCharacterData>`,
+        true);
 
     fs.writeFileSync(worldStateFilePath(), worldStateFileContent);
 

@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { addObjectToOtherObject, addObjectToOtherObjectWithEquals, doesIdExistsInFolder } from '../WorkWithText';
+import { addObjectToOtherObjectWithEquals, doesIdExistsInFolder } from '../WorkWithText';
 import { passageFilePostfix, eventsDir, charactersDir, eventFilePostfix, eventFilePostfixWithoutFileType } from '../Paths';
 import { createScreenPassage } from './passages/createScreenPassage';
 import { createLinearDescriberPassage } from './passages/createLinearDescriberPassage';
@@ -149,7 +149,8 @@ export const createPassage = async (context: vscode.ExtensionContext) => {
 
     // Add the passage id to the event file, to the eventEventPassages object
     const fullPassageId = `${selectedEvent}-${selectedCharacter}-${passageId}`;
-    let updateEventFileContent = await addObjectToOtherObjectWithEquals(eventPassagesPropertyName(selectedEvent), eventFileData, `'${fullPassageId}': ${passageId}Passage`);
+    let updateEventFileContent = await addObjectToOtherObjectWithEquals(
+        eventPassagesPropertyName(selectedEvent), eventFileData, `'${fullPassageId}': ${passageId}Passage`, false);
 
     // Add import statement
     updateEventFileContent = passagesImportString(passageId, passageFileNameWithoutPostfix, selectedCharacter) + updateEventFileContent;
