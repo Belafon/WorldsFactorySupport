@@ -72,16 +72,4 @@ export function activate(context: vscode.ExtensionContext) {
 
 	context.subscriptions.push(removePassageCommand);
 
-	// items 
-	const createItemCommand = vscode.commands.registerCommand('WorldsFactorySupport.createItem', async () => {
-		//await createItem(context);
-	});
-
-	context.subscriptions.push(createItemCommand);
-
-	const removeItemCommand = vscode.commands.registerCommand('WorldsFactorySupport.removeItem', async () => {
-		//await removeItem(context);
-	});
-
-	context.subscriptions.push(removeItemCommand);
 }

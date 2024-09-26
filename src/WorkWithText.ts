@@ -3,11 +3,11 @@ import * as fs from 'fs';
 
 
 export const addObjectToOtherObject = async (
-    parentObjectName: string, 
-    data: string, 
+    parentObjectName: string,
+    data: string,
     contentToInsert: string,
     hasSemicolon: boolean): Promise<string> => {
-    
+
     const regex = new RegExp(`(?<![a-zA-Z0-9])${parentObjectName}:\\s*{((?:{[^{}]*}|[^{}])*)}`);
 
     const updatedData = data.replace(regex, (match, innerCode) => {
@@ -18,8 +18,8 @@ export const addObjectToOtherObject = async (
 };
 
 export const addObjectToOtherObjectWithEquals = async (
-    parentObjectName: string, 
-    data: string, 
+    parentObjectName: string,
+    data: string,
     contentToInsert: string,
     hasSemicolon: boolean): Promise<string> => {
     const regex = new RegExp(`(?<![a-zA-Z0-9])${parentObjectName}\\s*=\\s*{((?:{[^{}]*}|[^{}])*)}`);
@@ -31,13 +31,13 @@ export const addObjectToOtherObjectWithEquals = async (
 };
 
 function insertNewCodeIntoObjectsContent(
-    innerCode: string, 
-    contentToInsert: string, 
-    match: string, 
-    parentObjectName: string, 
-    hasEquals: boolean, 
-    hasSemicolon:boolean): string {
-    
+    innerCode: string,
+    contentToInsert: string,
+    match: string,
+    parentObjectName: string,
+    hasEquals: boolean,
+    hasSemicolon: boolean): string {
+
     const trimmedContent = innerCode.trim();
 
 
@@ -56,7 +56,7 @@ function insertNewCodeIntoObjectsContent(
 
     // shift the content to insert by the object depth
     contentToInsert = contentToInsert.split('\n').map((line) => `${objectDepth}\t${line}`).join('\n');
-    if(hasSemicolon){
+    if (hasSemicolon) {
         contentToInsert += ';\n';
     } else {
         contentToInsert += ',\n';
@@ -71,19 +71,19 @@ function insertNewCodeIntoObjectsContent(
 
     // find out if the last character of the insert code is a comma
     innerCode = innerCode.trim();
-    if(!hasSemicolon){
+    if (!hasSemicolon) {
         if (!innerCode.endsWith(',')) {
             innerCode = innerCode + ',';
         }
     }
     innerCode = objectDepth + '\t' + innerCode + '\n';
-    
+
     const closingBracket = objectDepth + '}';
 
     // reconstruct the object with proper formatting
-    if(hasEquals){
+    if (hasEquals) {
         return `${parentObjectName} = {\n${innerCode}${contentToInsert}${closingBracket}`;
-    } 
+    }
     return `${parentObjectName}: {\n${innerCode}${contentToInsert}${closingBracket}`;
 }
 
@@ -123,9 +123,11 @@ export async function removeTextFromFile(data: string, textToRemove: string): Pr
 }
 
 
-
 export async function removeFile(filePath: string) {
-    fs.unlinkSync(filePath);
+    const fs = vscode.workspace.fs;
+    const uri = vscode.Uri.file(filePath);
+
+    fs.delete(uri);
 
     // Close all open editors for the removed file
     for (const tabGroup of vscode.window.tabGroups.all) {
@@ -137,7 +139,10 @@ export async function removeFile(filePath: string) {
             }
         }
     }
+    
+    await vscode.commands.executeCommand('typescript.restartTsServer');
 }
+
 
 export async function removeFolder(folderPath: string) {
     // Go through all files in the folder and close them in the editor if they are open
@@ -152,7 +157,7 @@ export async function removeFolder(folderPath: string) {
         }
     }
 
-    fs.rmdirSync(folderPath, { recursive: true });
+    vscode.workspace.fs.delete(vscode.Uri.file(folderPath), { recursive: true });
 }
 
 
