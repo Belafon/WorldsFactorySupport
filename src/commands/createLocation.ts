@@ -26,7 +26,7 @@ export const createLocation = async (context: vscode.ExtensionContext) => {
         return vscode.window.showErrorMessage('You must provide a location name.');
     }
 
-    let locationId = locationName;
+    let locationId = locationName.trim().toLowerCase().replace(/\s/g, '-');
 
     // now check if a location with the same name already exists
     if (doesIdExistsInFolder(locationsDir(), locationName)) {

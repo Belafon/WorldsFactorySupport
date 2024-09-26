@@ -191,6 +191,7 @@ export const isIdValid = (id: string): boolean => {
 
 export const askForId = async (placeHolder: string, prompt: string): Promise<string | undefined> => {
     let id: string | undefined = '';
+    id = id.trim().toLocaleLowerCase().replace(/\s/g, '-');
     while (!isIdValid(id)) {
         id = await vscode.window.showInputBox({
             placeHolder,

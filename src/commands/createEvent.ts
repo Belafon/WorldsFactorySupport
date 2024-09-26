@@ -19,34 +19,29 @@ export const eventPassagesPropertyName = (eventId: string): string => {
     return `${eventId}EventPassages`;
 }; 
 
-export const createEvent = async (context: vscode.ExtensionContext) => {
+export type TEventFileData = {
+    title: string,
+    eventId: string,
+    outline: string,
+    description: string,
+    timeRangeStart: string,
+    timeRangeEnd: string,
+    location: string,
+};
 
-    const eventId = await askForId('Enter event id', 'Provide the id for the new event.'); 
-
-    if (!eventId) {
-        return;
-    }
-
-    // now check if a location with the same name already exists
-    if (doesIdExistsInFolder(locationsDir(), eventId)) {
-        vscode.window.showErrorMessage(`An event with the id "${eventId}" already exists.`);
-        return vscode.window.showErrorMessage(`An event with the id "${eventId}" already exists.`);
-    }
-
-    const eventIdWithCapital = eventId.charAt(0).toUpperCase() + eventId.slice(1);
-
-    const newEventContent = 
-        `import { TEvent } from 'types/TEvent';
+export const createEvent = async (eventFileData: TEventFileData) => {
+    const eventIdWithCapital = eventFileData.eventId.charAt(0).toUpperCase() + eventFileData.eventId.slice(1);
+    const newEventContent =  `import { TEvent } from 'types/TEvent';
 import { Time } from 'time/Time';
 import { TEventPassage } from 'types/TPassage';
 
-export const ${eventId}Event: TEvent<'${eventId}'> = {
-\teventId: '${eventId}',
+export const ${eventFileData.eventId}Event: TEvent<'${eventFileData.eventId}'> = {
+\teventId: '${eventFileData.eventId}',
 \ttitle: '${eventIdWithCapital} Event',
-\tdescription: '',
+\tdescription: '${eventFileData.description}',
 \ttimeRange: {
-\t\tstart: Time.fromString(''),
-\t\tend: Time.fromString(''),
+\t\tstart: Time.fromString('${eventFileData.timeRangeStart}'),
+\t\tend: Time.fromString('${eventFileData.timeRangeEnd}'),
 \t},
 \tlocation: '',
 \t
@@ -61,19 +56,20 @@ export type T${eventIdWithCapital}EventData = {
 \t
 };
 
-export const ${eventPassagesPropertyName(eventId)} = {
+export const ${eventPassagesPropertyName(eventFileData.eventId)} = {
 \t
 } as const;
 
 // test
-Object.values(${eventPassagesPropertyName(eventId)}).forEach((item: () => TEventPassage<'${eventId}'>) => void item);
+Object.values(${eventPassagesPropertyName(eventFileData.eventId)}).forEach((item: () => TEventPassage<'${eventFileData.eventId}'>) => void item);
 `;
 
+
     // add new folder in events
-    fs.mkdirSync(path.join(eventsDir(), eventId));
+    fs.mkdirSync(path.join(eventsDir(), eventFileData.eventId));
     
     // Create the new event file
-    const eventFilePath = path.join(eventsDir(), eventId, eventId + eventFilePostfix);
+    const eventFilePath = path.join(eventsDir(), eventFileData.eventId, eventFileData.eventId + eventFilePostfix);
     fs.writeFile(eventFilePath, newEventContent, (err) => {
         if (err) {
             return vscode.window.showErrorMessage('Failed to create new location file!');
@@ -85,9 +81,9 @@ Object.values(${eventPassagesPropertyName(eventId)}).forEach((item: () => TEvent
     // Update the register.ts
     let registerFileData = await fs.promises.readFile(registerFilePath(), 'utf8');
 
-    registerFileData = eventsImportingString(eventId) + registerFileData;
-    let updatedData = await addObjectToOtherObject(containerObjectName, registerFileData, `${eventId}: ${eventId}${type}`, false);
-    updatedData = await addObjectToOtherObject("passages", updatedData,  `...${eventPassagesPropertyName(eventId)}`, false);
+    registerFileData = eventsImportingString(eventFileData.eventId) + registerFileData;
+    let updatedData = await addObjectToOtherObject(containerObjectName, registerFileData, `${eventFileData.eventId}: ${eventFileData.eventId}${type}`, false);
+    updatedData = await addObjectToOtherObject("passages", updatedData,  `...${eventPassagesPropertyName(eventFileData.eventId)}`, false);
 
     await fs.promises.writeFile(registerFilePath(), updatedData);
 
@@ -101,9 +97,9 @@ Object.values(${eventPassagesPropertyName(eventId)}).forEach((item: () => TEvent
     let updatedWorldStateFileData = await addObjectToOtherObject(
         containerObjectName,
         worldStateFileData,
-        `${eventId}: { ref: T${type}<'${eventId}'> } & Partial<T${eventIdWithCapital}${type}Data>`,
+        `${eventFileData.eventId}: { ref: T${type}<'${eventFileData.eventId}'> } & Partial<T${eventIdWithCapital}${type}Data>`,
         true);
-    updatedWorldStateFileData = eventsDataImportString(eventId, eventIdWithCapital) + updatedWorldStateFileData;
+    updatedWorldStateFileData = eventsDataImportString(eventFileData.eventId, eventIdWithCapital) + updatedWorldStateFileData;
 
     await fs.promises.writeFile(worldStateFilePath(), updatedWorldStateFileData);
 
@@ -113,4 +109,41 @@ Object.values(${eventPassagesPropertyName(eventId)}).forEach((item: () => TEvent
     const passageFileUri = vscode.Uri.file(eventFilePath);
     const passagerFile = await vscode.workspace.openTextDocument(passageFileUri);
     vscode.window.showTextDocument(passagerFile);
+};
+
+
+export const askPlayerForDataAndCreateEvent = async (context: vscode.ExtensionContext) => {
+
+    let title = await askForId('Enter event id', 'Provide the id for the new event.'); 
+    
+    if (!title) {
+        return;
+    }
+
+    let eventId = title.trim().toLowerCase().replace(/\s/g, '-');
+
+    // now check if a location with the same name already exists
+    if (doesIdExistsInFolder(locationsDir(), eventId)) {
+        vscode.window.showErrorMessage(`An event with the id "${eventId}" already exists.`);
+        const newId = await askForId('Enter event id', 'Provide the id for the new event.');
+        
+        if (!newId) {
+            return;
+        }
+
+        eventId = newId;
+    }
+
+    const eventIdWithCapital = eventId.charAt(0).toUpperCase() + eventId.slice(1);
+
+    const newEventContent = createEvent({
+        title: '',
+        eventId: eventId,
+        outline: '',
+        description: '',
+        timeRangeStart: '',
+        timeRangeEnd: '',
+        location: '',
+    });
+
 };

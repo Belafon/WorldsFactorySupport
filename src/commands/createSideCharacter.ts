@@ -26,7 +26,7 @@ export const createSideCharacter = async (context: vscode.ExtensionContext) => {
         return vscode.window.showErrorMessage('You must provide a character name.');
     }
 
-    let characterId = characterName;
+    let characterId = characterName.trim().toLowerCase().replace(/\s/g, '-');
 
     // Check if a character with the same name already exists
     if (doesIdExistsInFolder(sideCharacterDir(), characterName)) {

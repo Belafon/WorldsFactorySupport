@@ -2,7 +2,7 @@
   "name": "WorldsFactorySupport",
   "displayName": "WorldsFactorySupport",
   "description": "This is a tool that enhances the story creation process according the WorldsFactory structure.",
-  "version": "0.0.12",
+  "version": "0.0.15",
   "publisher": "worlds-factory-extension-1",
   "icon": "resources/icon.jpeg",
   "engines": {
@@ -30,14 +30,6 @@
       {
         "command": "WorldsFactorySupport.removeCharacter",
         "title": "WF: Remove Character"
-      }, 
-      {
-        "command": "WorldsFactorySupport.createItem",
-        "title": "WF: Create Item"
-      },
-      {
-        "command": "WorldsFactorySupport.removeItem",
-        "title": "WF: Remove Item"
       },
       {
         "command": "WorldsFactorySupport.createSideCharacter",
@@ -62,6 +54,10 @@
       {
         "command": "WorldsFactorySupport.removePassage",
         "title": "WF: Remove Passage"
+      },
+      {
+        "command": "WorldsFactorySupport.createEventWithOutline",
+        "title": "WF: Create Event With Outline"
       }
       
     ]

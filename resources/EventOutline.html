@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Create New Event</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #000000;
+            color: #f4f4f4;
+        }
+        h1 {
+            color: #3498db;
+            text-align: center;
+        }
+        form {
+            background-color: #464646;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="text"],
+        textarea,
+        select {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        textarea {
+            resize: vertical;
+        }
+        button {
+            background-color: #3498db;
+            color: #fff;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+    </style>
+</head>
+<body>
+    <h1>Create New Event</h1>
+    <form id="event-form">
+        <label for="title">Title:</label>
+        <input type="text" id="title" name="title" required value="${title}">
+
+        <label for="id">ID:</label>
+        <input type="text" id="id" name="id" required value="${id}">
+
+        <label for="outline">Outline:</label>
+        <textarea id="outline" name="outline" rows="8" required>
+            ${outline}
+        </textarea>
+
+        <label for="description">Description:</label>
+        <textarea id="description" name="description" rows="6">
+            ${description}
+        </textarea>
+
+        <label for="timeRangeStart">Start Time:</label>
+        <input type="datetime-local" id="timeRangeStart" name="timeRangeStart" required value="${timeRangeStart}">
+        
+        <label for="timeRangeEnd">End Time:</label>
+        <input type="datetime-local" id="timeRange" name="timeRange" value="${timeRangeEnd}">
+
+
+
+        <label for="location">Location:</label>
+        <select id="location" name="location">
+            ${locationOptions}
+        </select>
+
+        <button type="button" onclick="submitEvent()">Submit</button>
+    </form>
+
+    <script>
+        const vscode = acquireVsCodeApi();
+
+        function submitEvent() {
+            const form = document.getElementById('event-form');
+            const data = {
+                title: form.title.value,
+                id: form.id.value,
+                outline: form.outline.value,
+                description: form.description.value,
+                timeRangeStart: form.timeRangeStart.value,
+                timeRangeEnd: form.timeRangeEnd.value,
+                location: form.location.value
+            };
+
+            vscode.postMessage({
+                command: 'submitEvent',
+                data
+            });
+        }
+    </script>
+</body>
+</html>

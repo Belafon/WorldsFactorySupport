@@ -9,10 +9,11 @@ import { removeCharacter } from './commands/removeCharacter';
 import { removeLocation } from './commands/removeLocation';
 import { createSideCharacter } from './commands/createSideCharacter';
 import { removeSideCharacter } from './commands/removeSideCharacter';
-import { createEvent } from './commands/createEvent';
+import { askPlayerForDataAndCreateEvent } from './commands/createEvent';
 import { removeEvent } from './commands/removeEvent';
 import { createPassage } from './commands/createPassage';
 import { removePassage } from './commands/removePassage';
+import { createEventWithOutline } from './commands/createEventOutline';
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
@@ -50,7 +51,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 
 	const createEventCommand = vscode.commands.registerCommand('WorldsFactorySupport.createEvent', async () => {
-		await createEvent(context);
+		await askPlayerForDataAndCreateEvent(context);
 	});
 	context.subscriptions.push(createEventCommand);
 	
@@ -72,4 +73,9 @@ export function activate(context: vscode.ExtensionContext) {
 
 	context.subscriptions.push(removePassageCommand);
 
+	const createEventWithOutlineCommand = vscode.commands.registerCommand('WorldsFactorySupport.createEventWithOutline', async () => {
+		await createEventWithOutline(context);
+	});
+
+	context.subscriptions.push(createEventWithOutlineCommand);
 }
