@@ -15,6 +15,9 @@ export const characterImportString = (characterIdWithCapital: string, characterI
 export const containerObjectName = 'sideCharacters';
 
 export const createSideCharacter = async (context: vscode.ExtensionContext) => {
+    if (!fs.existsSync(sideCharacterDir())) {
+        fs.mkdirSync(sideCharacterDir());
+    }
 
     // Ask for the character name
     const characterName = await vscode.window.showInputBox({

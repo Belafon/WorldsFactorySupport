@@ -4,7 +4,7 @@ import * as path from 'path';
 import { addObjectToOtherObjectWithEquals, askForId, doesIdExistsInFolder, isIdValid } from '../WorkWithText';
 import { passageFilePostfix, eventsDir, charactersDir, eventFilePostfix, eventFilePostfixWithoutFileType } from '../Paths';
 import { createScreenPassage } from './passages/createScreenPassage';
-import { createLinearDescriberPassage } from './passages/createLinearDescriberPassage';
+import { createLinearPassage } from './passages/createLinearPassage';
 import { createTransitionPassage } from './passages/createTransitionPassage';
 import { eventPassagesPropertyName } from './createEvent';
 
@@ -23,21 +23,28 @@ export const passagesImportString = (passageId: string, passageFileNameWithoutPo
 
 
 export const createPassage = async (context: vscode.ExtensionContext) => {
+    if (!fs.existsSync(eventsDir())) {
+        fs.mkdirSync(eventsDir());
+    }
+
+    if (!fs.existsSync(charactersDir())) {
+        fs.mkdirSync(charactersDir());
+    }
 
 
     // Select an event
 
     // Get list of all events
     const eventNames = fs.readdirSync(eventsDir())
-            .filter(file => fs.lstatSync(path.join(eventsDir(), file)).isDirectory());
-    
+        .filter(file => fs.lstatSync(path.join(eventsDir(), file)).isDirectory());
+
     // Ask for the event id selection
     const selectedEvent = await vscode.window.showQuickPick(eventNames, {
         placeHolder: 'Select an event for the new passage',
     });
 
     if (!selectedEvent) {
-        return vscode.window.showErrorMessage('You must provide an event id.');
+        return;
     }
 
     const folderPathOfSelectedEvent = path.join(eventsDir(), selectedEvent);
@@ -48,11 +55,11 @@ export const createPassage = async (context: vscode.ExtensionContext) => {
 
     // Check if the events file exists
     const eventFilePath = path.join(folderPathOfSelectedEvent, selectedEvent + eventFilePostfix);
-    
+
     if (!fs.existsSync(eventFilePath)) {
         return vscode.window.showErrorMessage(`Event file ${eventFilePath} does not exist.`);
     }
-    
+
 
 
     // Select a character
@@ -73,7 +80,7 @@ export const createPassage = async (context: vscode.ExtensionContext) => {
     }
 
     const folderPathOfSelectedCharacter = path.join(folderPathOfSelectedEvent, selectedCharacter + '.' + containerObjectName);
-    
+
 
 
     // Get passage id
@@ -104,14 +111,14 @@ export const createPassage = async (context: vscode.ExtensionContext) => {
     // Create passage file
 
     // Get file content
-    
+
     let newPassageContent = '';
     switch (selectedPassageType) {
         case PassageType.Screen:
             newPassageContent = await createScreenPassage(context, selectedEvent, selectedCharacter, passageId);
             break;
         case PassageType.LinearDescriber:
-            newPassageContent = await createLinearDescriberPassage(context, selectedEvent, selectedCharacter, passageId);
+            newPassageContent = await createLinearPassage(context, selectedEvent, selectedCharacter, passageId);
             break;
         case PassageType.Transition:
             newPassageContent = await createTransitionPassage(context, selectedEvent, selectedCharacter, passageId);
@@ -124,7 +131,7 @@ export const createPassage = async (context: vscode.ExtensionContext) => {
     if (!fs.existsSync(folderPathOfSelectedCharacter)) {
         fs.mkdirSync(folderPathOfSelectedCharacter);
     }
-    
+
     // Create the new passage file
     const passageFileNameWithoutPostfix = `${passageId}.${selectedPassageType.toLowerCase().replace(' ', '-')}`;
     const passageFileName = passageFileNameWithoutPostfix + passageFilePostfix;

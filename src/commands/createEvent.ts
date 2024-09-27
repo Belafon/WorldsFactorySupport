@@ -30,6 +30,10 @@ export type TEventFileData = {
 };
 
 export const createEvent = async (eventFileData: TEventFileData) => {
+    if(!fs.existsSync(eventsDir())) {
+        fs.mkdirSync(eventsDir());
+    }
+    
     const eventIdWithCapital = eventFileData.eventId.charAt(0).toUpperCase() + eventFileData.eventId.slice(1);
     const newEventContent =  `import { TEvent } from 'types/TEvent';
 import { Time } from 'time/Time';
@@ -66,7 +70,11 @@ Object.values(${eventPassagesPropertyName(eventFileData.eventId)}).forEach((item
 
 
     // add new folder in events
-    fs.mkdirSync(path.join(eventsDir(), eventFileData.eventId));
+    try{
+        fs.mkdirSync(path.join(eventsDir(), eventFileData.eventId));
+    } catch (e){
+        vscode.window.showErrorMessage("Directory cannot be created");
+    }
     
     // Create the new event file
     const eventFilePath = path.join(eventsDir(), eventFileData.eventId, eventFileData.eventId + eventFilePostfix);

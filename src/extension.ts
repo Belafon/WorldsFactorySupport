@@ -14,6 +14,7 @@ import { removeEvent } from './commands/removeEvent';
 import { createPassage } from './commands/createPassage';
 import { removePassage } from './commands/removePassage';
 import { createEventWithOutline } from './commands/createEventOutline';
+import { activateEditor, EventEditorProvider } from './editors/EventEditor';
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
@@ -78,4 +79,8 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 
 	context.subscriptions.push(createEventWithOutlineCommand);
+
+
+
+	//activateEditor(context);
 }

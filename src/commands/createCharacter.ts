@@ -15,7 +15,9 @@ export const characterImportString = (characterIdWithCapital: string, characterI
 export const containerObjectName = 'characters';
 
 export const createCharacter = async (context: vscode.ExtensionContext) => {
-
+    if (!fs.existsSync(charactersDir())) {
+        fs.mkdirSync(charactersDir());
+    }
     // Ask for the character name
     const characterName = await vscode.window.showInputBox({
         placeHolder: 'Enter character name (e.g., Thomas)',
@@ -44,14 +46,14 @@ export const createCharacter = async (context: vscode.ExtensionContext) => {
 
         characterId = possibleNewCharacterId;
     }
-    
+
     const characterIdWithCapital = characterId.charAt(0).toUpperCase() + characterId.slice(1);
     const newCharacterContent = `
 import { TCharacter } from 'types/TCharacter';
 
 export const ${characterIdWithCapital}: TCharacter<'${characterId}'> = {
 \tid: '${characterId}',
-\tname: '${characterName}',
+\tname: '_(${characterName})',
 \tstartPassageId: undefined,
 \t
 \tinit: {
@@ -92,8 +94,8 @@ export type T${characterIdWithCapital}CharacterData = {
     worldStateFileContent = characterDataImportString(characterIdWithCapital, characterId) + worldStateFileContent;
 
     worldStateFileContent = await addObjectToOtherObject(
-        containerObjectName, 
-        worldStateFileContent, 
+        containerObjectName,
+        worldStateFileContent,
         `${characterId}: { ref: TCharacter<'${characterId}'> } & TCharacterData & Partial<T${characterIdWithCapital}CharacterData>`,
         true);
 

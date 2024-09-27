@@ -14,33 +14,30 @@ export const createScreenPassage = async (context: vscode.ExtensionContext,
     return `import { DeltaTime } from 'time/Time';
 import { TPassage } from 'types/TPassage';
 
-export const ${passageId}Passage = (): TPassage<'${selectedEvent}', '${selectedCharacter}'> => ({
-    eventId: '${selectedEvent}',
-    characterId: '${selectedCharacter}',
-    id: '${passageId}',
+export const ${passageId}Passage = (): TPassage<'${selectedEvent}', '${selectedCharacter}'> => {   
+    return {
+        eventId: '${selectedEvent}',
+        characterId: '${selectedCharacter}',
+        id: '${passageId}',
+    
+        type: 'screen',
+        title: _('${title}'),
+        image: '',
+    
+        body: [
+            {
+                text: _(''),
+                links: [
+                    {
+                        text: _(''),
+                        passageId: '${selectedEvent}-${selectedCharacter}-',
+                        cost: DeltaTime.fromMin(10),
+                    }
+                ],
+            },
+        ],
+    };
 
-    type: 'screen',
-    title: '${title}',
-    image: '',
-
-    body: [
-        {
-            condition: true,
-            text: '',
-            links: [
-                {
-                    text: '',
-                    passageId: '${selectedEvent}-${selectedCharacter}-',
-                    cost: {
-                        time: DeltaTime.fromMin(),
-                        items: [{ id: '', count: 1 }],
-                    },
-                    autoPriortiy: 1,
-                }
-            ],
-        },
-    ],
-});
-    `;
+}`;
 };
 

@@ -15,6 +15,9 @@ export const locationImportingString = (locationId: string) => {
 export const containerObjectName = 'locations';
 
 export const createLocation = async (context: vscode.ExtensionContext) => {
+    if(!fs.existsSync(locationsDir())) {
+        fs.mkdirSync(locationsDir());
+    }
 
     // Ask for the location name
     const locationName = await vscode.window.showInputBox({
@@ -23,7 +26,7 @@ export const createLocation = async (context: vscode.ExtensionContext) => {
     });
 
     if (!locationName) {
-        return vscode.window.showErrorMessage('You must provide a location name.');
+        return;
     }
 
     let locationId = locationName.trim().toLowerCase().replace(/\s/g, '-');
