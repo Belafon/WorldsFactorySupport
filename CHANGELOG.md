@@ -8,7 +8,7 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 ### Added
 
-- Complitions for passage editing
+- Completions for passage editing
   - completion for used objects of world state
   - completion for main character of the passage
 
