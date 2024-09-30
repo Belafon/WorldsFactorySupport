@@ -23,8 +23,8 @@ User can create or remove a Character, SideCharacter, Location, Event and Passag
 
 #### For main character of the passage
 
-- When typing `'character'` or `'{character id}'`, completion will show and after selecting, `s.characters.{character id}` will be inserted. 
+- When typing `'character'` or `'{character id}'`, completion will be showed and after selection, `s.characters.{character id}` will be inserted. 
 
 #### For objects of world state
 
-- When an object of world state is used already, when starting to type the object name, completion will show and after selecting, `s.{object type}.{object id}.{modifier}.` will be inserted.
+- When an object of world state is used already, when starting to type the object name, completion will be showed and after selection, `s.{object type}.{object id}.{modifier}.` will be inserted.
