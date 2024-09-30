@@ -68,7 +68,6 @@ function getCompletionsForType(
     completionTitles: Set<string>,
     modifier: string = '') {
     
-    //const regex = /s\.characters\.([a-zA-Z0-9-]+)\./g;
     const regexString = `s\\.${type}\\.([a-zA-Z0-9-]+)\\.`;
     const regex = new RegExp(regexString, "g");
 
