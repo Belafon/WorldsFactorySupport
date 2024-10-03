@@ -22,13 +22,18 @@ export const addObjectToOtherObjectWithEquals = async (
     data: string,
     contentToInsert: string,
     hasSemicolon: boolean): Promise<string> => {
-    const regex = new RegExp(`(?<![a-zA-Z0-9])${parentObjectName}\\s*=\\s*{((?:{[^{}]*}|[^{}])*)}`);
+    const parentObjectNameEscaped = escapeRegExp(parentObjectName);
+    const regex = new RegExp(`(?<![a-zA-Z0-9])${parentObjectNameEscaped}\\s*=\\s*{((?:{[^{}]*}|[^{}])*)}`);
     const updatedData = data.replace(regex, (match, innerCode) => {
         return insertNewCodeIntoObjectsContent(innerCode, contentToInsert, match, parentObjectName, true, hasSemicolon);
     });
 
     return updatedData;
 };
+
+function escapeRegExp(str: string) {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
 function insertNewCodeIntoObjectsContent(
     innerCode: string,
@@ -163,15 +168,30 @@ export async function removeFolder(folderPath: string) {
 
 
 
-export const doesIdExistsInFolder = (folderPath: string, id: string): boolean => {
+export const doesIdExistsInFolder = (folderPath: string, id: string, includeFolders = false): boolean => {
     if (!fs.existsSync(folderPath)) {
         return false;
     }
 
-    return fs.readdirSync(folderPath).some((file) => {
-        const currentFileName = file.split('.')[0].toLowerCase();
-        return currentFileName === id.toLowerCase();
-    });
+    const checkDirectory = (dirPath: string): boolean => {
+        const files = fs.readdirSync(dirPath);
+        for (const file of files) {
+            const fullPath = `${dirPath}/${file}`;
+            if (!includeFolders && fs.statSync(fullPath).isDirectory()) {
+                if (checkDirectory(fullPath)) {
+                    return true;
+                }
+            } else {
+                const currentFileName = file.split('.')[0].toLowerCase();
+                if (currentFileName === id.toLowerCase()) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    };
+
+    return checkDirectory(folderPath);
 };
 
 
@@ -186,12 +206,12 @@ export const removeLineByMatch = (data: string, match: string) => {
  * can contain '-' and '_'
  */
 export const isIdValid = (id: string): boolean => {
-    return /^[a-zA-Z][a-zA-Z0-9_-]*$/.test(id);
+    return /^[a-zA-Z][a-zA-Z0-9_]*$/.test(id);
 };
 
 export const askForId = async (placeHolder: string, prompt: string): Promise<string | undefined> => {
     let id: string | undefined = '';
-    id = id.trim().toLocaleLowerCase().replace(/\s/g, '-');
+    id = id.trim().toLocaleLowerCase().replace(/\s/g, '_');
     while (!isIdValid(id)) {
         id = await vscode.window.showInputBox({
             placeHolder,

@@ -28,3 +28,7 @@ export const eventsDir = () => path.join(workspaceFolders()!, 'src', 'data', 'ev
 
 
 export const passageFilePostfix = '.ts';
+
+
+export const racesFilePath = () => path.join(workspaceFolders()!, 'src', 'data', 'races', 'races.ts');
+export const racesDir = () => path.join(workspaceFolders()!, 'src', 'data', 'races');

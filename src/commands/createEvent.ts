@@ -41,7 +41,7 @@ import { TEventPassage } from 'types/TPassage';
 
 export const ${eventFileData.eventId}Event: TEvent<'${eventFileData.eventId}'> = {
 \teventId: '${eventFileData.eventId}',
-\ttitle: '${eventIdWithCapital} Event',
+\ttitle: _('${eventIdWithCapital} Event'),
 \tdescription: '${eventFileData.description}',
 \ttimeRange: {
 \t\tstart: Time.fromString('${eventFileData.timeRangeStart}'),
@@ -57,7 +57,7 @@ export const ${eventFileData.eventId}Event: TEvent<'${eventFileData.eventId}'> =
 };
 
 export type T${eventIdWithCapital}EventData = {
-\t
+\tvoid?: void;
 };
 
 export const ${eventPassagesPropertyName(eventFileData.eventId)} = {
@@ -128,10 +128,10 @@ export const askPlayerForDataAndCreateEvent = async (context: vscode.ExtensionCo
         return;
     }
 
-    let eventId = title.trim().toLowerCase().replace(/\s/g, '-');
+    let eventId = title.trim().toLowerCase().replace(/\s/g, '_');
 
-    // now check if a location with the same name already exists
-    if (doesIdExistsInFolder(locationsDir(), eventId)) {
+    // now check if an event id with the same name already exists
+    if (doesIdExistsInFolder(eventsDir(), eventId, true)) {
         vscode.window.showErrorMessage(`An event with the id "${eventId}" already exists.`);
         const newId = await askForId('Enter event id', 'Provide the id for the new event.');
         

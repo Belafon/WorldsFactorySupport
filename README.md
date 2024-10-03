@@ -16,7 +16,7 @@ User can create or remove a Character, SideCharacter, Location, Event and Passag
 - 'WF: Create Passage'
 - 'WF: Remove Passage'
 - 'WF: Create Event With Outline' ~ Shows a form to create new event
-
+- 'WF: Create Race'
 ## Completion:
 
 ### Passage editing

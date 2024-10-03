@@ -29,7 +29,7 @@ export const createLocation = async (context: vscode.ExtensionContext) => {
         return;
     }
 
-    let locationId = locationName.trim().toLowerCase().replace(/\s/g, '-');
+    let locationId = locationName.trim().toLowerCase().replace(/\s/g, '_');
 
     // now check if a location with the same name already exists
     if (doesIdExistsInFolder(locationsDir(), locationName)) {
@@ -59,7 +59,7 @@ export const createLocation = async (context: vscode.ExtensionContext) => {
 
 export const ${locationId}Location: TLocation<'${locationId}'> = {
 \tid: '${locationId}',
-\tname: '${locationName}',
+\tname: _('${locationName}'),
 \tdescription: '',
 \t
 \tlocalCharacters: [
@@ -69,7 +69,7 @@ export const ${locationId}Location: TLocation<'${locationId}'> = {
 };
 
 export type T${locationIdWithCapital}LocationData = {
-\t
+\tvoid?: void;
 };
 `;
 

@@ -14,7 +14,7 @@ export const type = 'Passage';
 export enum PassageType {
     Screen = 'Screen',
     Transition = 'Transition',
-    LinearDescriber = 'Linear Describer',
+    LinearDescriber = 'Linear',
 };
 
 export const passagesImportString = (passageId: string, passageFileNameWithoutPostfix: string, characterId: string): string => {
@@ -133,7 +133,7 @@ export const createPassage = async (context: vscode.ExtensionContext) => {
     }
 
     // Create the new passage file
-    const passageFileNameWithoutPostfix = `${passageId}.${selectedPassageType.toLowerCase().replace(' ', '-')}`;
+    const passageFileNameWithoutPostfix = `${passageId}.${selectedPassageType.toLowerCase().replace(' ', '_')}`;
     const passageFileName = passageFileNameWithoutPostfix + passageFilePostfix;
     const passageFilePath = path.join(folderPathOfSelectedCharacter, passageFileName);
     fs.writeFile(passageFilePath, newPassageContent, (err) => {

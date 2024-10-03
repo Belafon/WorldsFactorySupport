@@ -4,6 +4,16 @@ All notable changes to the "WorldsFactorySupport" extension will be documented i
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.0.20] - 2024-3-10
+
+### Added
+
+- Command for new Race creation
+
+### Changed
+
+Automatic Id derivation seperator changed from `-` to `_`.
+
 ## [0.0.17] - 2024-29-09
 
 ### Added

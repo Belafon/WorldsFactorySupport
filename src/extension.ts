@@ -16,6 +16,7 @@ import { removePassage } from './commands/removePassage';
 import { createEventWithOutline } from './commands/createEventOutline';
 import { activateEditor, EventEditorProvider } from './editors/EventEditor';
 import { activatePassageEventNameCompletion } from './completions/PassageEventNameCompletion';
+import { createRace } from './commands/createRace';
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
@@ -81,6 +82,9 @@ export function activate(context: vscode.ExtensionContext) {
 
 	context.subscriptions.push(createEventWithOutlineCommand);
 
+	const createRaceCommand = vscode.commands.registerCommand('WorldsFactorySupport.createRace', async () => {
+		await createRace(context);
+	});
 
 	activatePassageEventNameCompletion(context);
 	//activateEditor(context);
