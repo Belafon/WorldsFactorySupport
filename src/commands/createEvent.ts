@@ -65,7 +65,9 @@ export const ${eventPassagesPropertyName(eventFileData.eventId)} = {
 } as const;
 
 // test
-Object.values(${eventPassagesPropertyName(eventFileData.eventId)}).forEach((item: () => TEventPassage<'${eventFileData.eventId}'>) => void item);
+Object.values(${eventPassagesPropertyName(eventFileData.eventId)}).forEach((
+\titem: () => Promise<{ default: () => TEventPassage<'${eventFileData.eventId}'>}>) => void item
+);
 `;
 
 

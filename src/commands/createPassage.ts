@@ -17,10 +17,6 @@ export enum PassageType {
     LinearDescriber = 'Linear',
 };
 
-export const passagesImportString = (passageId: string, passageFileNameWithoutPostfix: string, characterId: string): string => {
-    return `import { ${passageId}Passage } from './${characterId}.${containerObjectName}/${passageFileNameWithoutPostfix}';\n`;
-};
-
 
 export const createPassage = async (context: vscode.ExtensionContext) => {
     if (!fs.existsSync(eventsDir())) {
@@ -154,22 +150,12 @@ export const createPassage = async (context: vscode.ExtensionContext) => {
     // Add the passage id to the event file, to the eventEventPassages object
     const fullPassageId = `${selectedEvent}-${selectedCharacter}-${passageId}`;
     let updateEventFileContent = await addObjectToOtherObjectWithEquals(
-        eventPassagesPropertyName(selectedEvent), eventFileData, `'${fullPassageId}': ${passageId}Passage`, false);
-
-    // Add import statement
-    updateEventFileContent = passagesImportString(passageId, passageFileNameWithoutPostfix, selectedCharacter) + updateEventFileContent;
-
-    fs.writeFile(eventFilePath, updateEventFileContent, (err) => {
-        if (err) {
-            return vscode.window.showErrorMessage('Failed to update event file!');
-        }
-    });
+        eventPassagesPropertyName(selectedEvent), eventFileData, `'${fullPassageId}': () => import(./${selectedCharacter}.${containerObjectName}/${passageFileNameWithoutPostfix})`, false);
 
 
 
 
-
-    // Open the new new file
+    // Open the new file
     const passageFileUri = vscode.Uri.file(passageFilePath);
     const passageFile = await vscode.workspace.openTextDocument(passageFileUri);
     vscode.window.showTextDocument(passageFile);
