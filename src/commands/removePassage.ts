@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { removeFile, removeFolder, removeLineByMatch, removeTextFromFile } from '../WorkWithText';
 import { eventFilePostfix, eventsDir } from '../Paths';
-import { passagesImportString } from './createPassage';
+
 
 export const removePassage = async (context: vscode.ExtensionContext) => {
     if (!vscode.workspace.workspaceFolders) {
@@ -76,7 +76,6 @@ export const removePassage = async (context: vscode.ExtensionContext) => {
 
     let eventData = fs.readFileSync(eventFilePath, 'utf-8');
     const passageId = passageFileNameWithoutFileType.split('.')[0];
-    eventData = await removeTextFromFile(eventData, passagesImportString(passageId, passageFileNameWithoutFileType, selectedCharacter));
     
     // remove line from the event file
     const fullPassageId = `${selectedEvent}-${selectedCharacter}-${passageId}`;

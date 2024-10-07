@@ -150,8 +150,15 @@ export const createPassage = async (context: vscode.ExtensionContext) => {
     // Add the passage id to the event file, to the eventEventPassages object
     const fullPassageId = `${selectedEvent}-${selectedCharacter}-${passageId}`;
     let updateEventFileContent = await addObjectToOtherObjectWithEquals(
-        eventPassagesPropertyName(selectedEvent), eventFileData, `'${fullPassageId}': () => import(./${selectedCharacter}.${containerObjectName}/${passageFileNameWithoutPostfix})`, false);
+        eventPassagesPropertyName(selectedEvent), eventFileData, `'${fullPassageId}': () => import('./${selectedCharacter}.${containerObjectName}/${passageFileNameWithoutPostfix}')`, false);
 
+    
+    fs.writeFile(eventFilePath, updateEventFileContent, (err) => {
+        if (err) {
+            return vscode.window.showErrorMessage('Failed to update event file!');
+        }
+    });
+    
 
 
 
