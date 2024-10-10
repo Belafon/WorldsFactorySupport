@@ -25,7 +25,7 @@ User can create or remove a Character, SideCharacter, Location, Event and Passag
 - 'WF: Generate Content - SideCharacter'
 - 'WF: Generate Content - Event'
 - 'WF: Generate Content - Passage'
-- 
+
 ## Completion:
 
 ### Passage editing

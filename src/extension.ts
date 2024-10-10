@@ -17,7 +17,6 @@ import { createEventWithOutline } from "./commands/createEventOutline";
 import { activateEditor, EventEditorProvider } from "./editors/EventEditor";
 import { activatePassageEventNameCompletion } from "./completions/PassageEventNameCompletion";
 import { createRace } from "./commands/createRace";
-import { Server } from "./visualizer/Server";
 import { generateContentLocations } from "./contentGenerators/locationsGenerator";
 import { generateContentCharacters } from "./contentGenerators/charactersGenerator";
 import { generateContentEvents } from "./contentGenerators/eventsGenerator";
@@ -178,7 +177,6 @@ export function activate(context: vscode.ExtensionContext) {
 
   activatePassageEventNameCompletion(context);
 
-  new Server().start();
 
   //activateEditor(context);
 }
