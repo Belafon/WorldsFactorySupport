@@ -14,8 +14,25 @@ export const locationImportingString = (locationId: string) => {
 
 export const containerObjectName = 'locations';
 
+
 export const createLocation = async (context: vscode.ExtensionContext) => {
-    if(!fs.existsSync(locationsDir())) {
+    const userInput = await getUserInput();
+    if (!userInput) {
+        return;
+    }
+
+    const { locationName, locationId } = userInput;
+    
+    const locationFilePath = await createLocationWithArgs(locationId, locationName);
+
+    // Open the new character file
+    const locationFileUri = vscode.Uri.file(locationFilePath);
+    const locationFile = await vscode.workspace.openTextDocument(locationFileUri);
+    vscode.window.showTextDocument(locationFile);
+};
+
+const getUserInput = async (): Promise<{ locationName: string, locationId: string } | null> => {
+    if (!fs.existsSync(locationsDir())) {
         fs.mkdirSync(locationsDir());
     }
 
@@ -26,7 +43,7 @@ export const createLocation = async (context: vscode.ExtensionContext) => {
     });
 
     if (!locationName) {
-        return;
+        return null;
     }
 
     let locationId = locationName.trim().toLowerCase().replace(/\s/g, '_');
@@ -38,21 +55,26 @@ export const createLocation = async (context: vscode.ExtensionContext) => {
         const possibleNewLocationId = await askForId('Enter location ID', 'Provide the ID for the new location.');
 
         if (!possibleNewLocationId) {
-            return;
+            return null;
         }
 
         if (!isIdValid(possibleNewLocationId)) {
-            return vscode.window.showErrorMessage('Invalid location ID. It must be a valid TypeScript identifier.');
+            vscode.window.showErrorMessage('Invalid location ID. It must be a valid TypeScript identifier.');
+            return null;
         }
 
-
         if (doesIdExistsInFolder(locationsDir(), possibleNewLocationId)) {
-            return vscode.window.showErrorMessage(`A location with the ID "${locationId}" already exists.`);
+            vscode.window.showErrorMessage(`A location with the ID "${locationId}" already exists.`);
+            return null;
         }
 
         locationId = possibleNewLocationId;
     }
 
+    return { locationName, locationId };
+};
+
+export async function createLocationWithArgs(locationId: string, locationName: string) {
     const locationIdWithCapital = locationId.charAt(0).toUpperCase() + locationId.slice(1);
 
     const newLocationContent = `import { TLocation } from 'types/TLocation';
@@ -82,8 +104,6 @@ export type T${locationIdWithCapital}LocationData = {
         }
     });
 
-
-
     // Update the register.ts
     let registerFileData = await fs.promises.readFile(registerFilePath(), 'utf8');
 
@@ -92,8 +112,6 @@ export type T${locationIdWithCapital}LocationData = {
         containerObjectName, registerFileData, `${locationId}: ${locationId}Location`, false);
 
     await fs.promises.writeFile(registerFilePath(), updatedData);
-
-
 
     // Update TWorldState.ts
     let worldStateFileData = await fs.promises.readFile((worldStateFilePath()), 'utf8');
@@ -105,11 +123,6 @@ export type T${locationIdWithCapital}LocationData = {
     updatedWorldStateFileData = locationDataImportString(locationId, locationIdWithCapital) + updatedWorldStateFileData;
 
     await fs.promises.writeFile(worldStateFilePath(), updatedWorldStateFileData);
+    return locationFilePath;
+}
 
-
-
-    // Open the new character file
-    const locationFileUri = vscode.Uri.file(locationFilePath);
-    const locationFile = await vscode.workspace.openTextDocument(locationFileUri);
-    vscode.window.showTextDocument(locationFile);
-};

@@ -2,7 +2,7 @@
   "name": "WorldsFactorySupport",
   "displayName": "WorldsFactorySupport",
   "description": "This is a tool that enhances the story creation process according the WorldsFactory structure.",
-  "version": "0.0.20",
+  "version": "0.0.22",
   "publisher": "worlds-factory-extension-1",
   "icon": "resources/icon.jpeg",
   "engines": {
@@ -74,6 +74,31 @@
       {
         "command": "WorldsFactorySupport.createRace",
         "title": "WF: Create Race"
+      },
+
+
+
+
+
+      {
+        "command": "WorldsFactorySupport.generateContentLocation",
+        "title": "WF: Generate Content - Location"
+      },
+      {
+        "command": "WorldsFactorySupport.generateContentCharacter",
+        "title": "WF: Generate Content - Character"
+      },
+      {
+        "command": "WorldsFactorySupport.generateContentSideCharacter",
+        "title": "WF: Generate Content - Side Character"
+      },
+      {
+        "command": "WorldsFactorySupport.generateContentEvent",
+        "title": "WF: Generate Content - Event"
+      },
+      {
+        "command": "WorldsFactorySupport.generateContentPassage",
+        "title": "WF: Generate Content - Passage"
       }
     ]
   },

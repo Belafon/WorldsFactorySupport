@@ -4,7 +4,8 @@ import * as vscode from 'vscode';
 export const createTransitionPassage = async (context: vscode.ExtensionContext, 
     selectedEvent: string, selectedCharacter: string, passageId: string): Promise<string> => {
 
-    return `import { DeltaTime } from 'time/Time';
+    return `// @ts-ignore
+import { DeltaTime } from 'time/Time';
 import { TPassage } from 'types/TPassage';
 
 const passage = (): TPassage<'${selectedEvent}', '${selectedCharacter}'> => ({

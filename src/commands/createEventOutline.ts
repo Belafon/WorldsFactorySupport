@@ -77,7 +77,6 @@ async function createEventFile(eventData: { title: string, id: string, outline: 
     createEvent({
         title: eventData.title,
         eventId: eventData.id,
-        outline: eventData.outline,
         description: eventData.description,
         timeRangeStart: eventData.timeRange,
         timeRangeEnd: eventData.timeRange,

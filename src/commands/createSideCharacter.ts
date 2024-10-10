@@ -14,7 +14,25 @@ export const characterImportString = (characterIdWithCapital: string, characterI
 
 export const containerObjectName = 'sideCharacters';
 
+// Main function for creating a new side character
 export const createSideCharacter = async (context: vscode.ExtensionContext) => {
+    const userInput = await getUserInput();
+    if (!userInput) {
+        return;
+    }
+
+    const { characterName, characterId } = userInput;
+
+    const characterFilePath = await createSideCharacterWithArgs(characterId, characterName);
+
+    // Open the new character file
+    const characterFileUri = vscode.Uri.file(characterFilePath);
+    const characterFile = await vscode.workspace.openTextDocument(characterFileUri);
+    vscode.window.showTextDocument(characterFile);
+};
+
+// Function to gather user input for creating the side character
+const getUserInput = async (): Promise<{ characterName: string, characterId: string } | null> => {
     if (!fs.existsSync(sideCharacterDir())) {
         fs.mkdirSync(sideCharacterDir());
     }
@@ -22,34 +40,41 @@ export const createSideCharacter = async (context: vscode.ExtensionContext) => {
     // Ask for the character name
     const characterName = await vscode.window.showInputBox({
         placeHolder: 'Enter side character name (e.g., Thomas)',
-        prompt: 'Provide the name for the new character.',
+        prompt: 'Provide the name for the new side character.',
     });
 
     if (!characterName) {
-        return vscode.window.showErrorMessage('You must provide a character name.');
+        return null;
     }
 
     let characterId = characterName.trim().toLowerCase().replace(/\s/g, '_');
 
     // Check if a character with the same name already exists
     if (doesIdExistsInFolder(sideCharacterDir(), characterName)) {
-        vscode.window.showErrorMessage(`A character with the name "${characterName}" already exists.`);
+        vscode.window.showErrorMessage(`A side character with the name "${characterName}" already exists.`);
 
         // Ask for the character ID
         const possibleNewCharacterId = await askForId('Enter side character ID (e.g., thomas)', 'Provide the ID for the new side character.');
 
         if (!possibleNewCharacterId) {
-            return;
+            return null;
         }
 
         if (doesIdExistsInFolder(sideCharacterDir(), possibleNewCharacterId)) {
-            return vscode.window.showErrorMessage(`A side character with the ID "${possibleNewCharacterId}" already exists.`);
+            vscode.window.showErrorMessage(`A side character with the ID "${possibleNewCharacterId}" already exists.`);
+            return null;
         }
 
         characterId = possibleNewCharacterId;
     }
-    
+
+    return { characterName, characterId };
+};
+
+// Function to create the side character file and update the necessary files
+export async function createSideCharacterWithArgs(characterId: string, characterName: string) {
     const characterIdWithCapital = characterId.charAt(0).toUpperCase() + characterId.slice(1);
+
     const newCharacterContent = `import { TSideCharacter } from 'types/TCharacter';
 
 export const ${characterIdWithCapital}: TSideCharacter<'${characterId}'> = {
@@ -60,6 +85,7 @@ export const ${characterIdWithCapital}: TSideCharacter<'${characterId}'> = {
 \tinit: {
 \t\tinventory: [],
 \t\tlocation: undefined,
+\t\tisDead: false,
 \t},
 };
 
@@ -78,31 +104,25 @@ export type T${characterIdWithCapital}SideCharacterData = {
     });
 
     // Update the register.ts
-
-    let registerFileContent = fs.readFileSync(registerFilePath(), 'utf-8');
+    let registerFileContent = await fs.promises.readFile(registerFilePath(), 'utf-8');
     registerFileContent = characterImportString(characterIdWithCapital, characterId) + registerFileContent;
+
     const updatedData = await addObjectToOtherObject(
         containerObjectName, registerFileContent, `${characterId}: ${characterIdWithCapital}`, false);
 
-    fs.writeFileSync(registerFilePath(), updatedData);
-
+    await fs.promises.writeFile(registerFilePath(), updatedData);
 
     // Update TWorldState.ts
-    let worldStateFileContent = fs.readFileSync(worldStateFilePath(), 'utf-8');
+    let worldStateFileContent = await fs.promises.readFile(worldStateFilePath(), 'utf-8');
     worldStateFileContent = characterDataImportString(characterIdWithCapital, characterId) + worldStateFileContent;
 
     worldStateFileContent = await addObjectToOtherObject(
-        containerObjectName, 
-        worldStateFileContent, 
+        containerObjectName,
+        worldStateFileContent,
         `${characterId}: { ref: TSideCharacter<'${characterId}'> } & TSideCharacterData & Partial<T${characterIdWithCapital}SideCharacterData>`,
         true);
 
-    fs.writeFileSync(worldStateFilePath(), worldStateFileContent);
+    await fs.promises.writeFile(worldStateFilePath(), worldStateFileContent);
 
-
-
-    // Open the new side character file
-    const characterFileUri = vscode.Uri.file(characterFilePath);
-    const characterFile = await vscode.workspace.openTextDocument(characterFileUri);
-    vscode.window.showTextDocument(characterFile);
-};
+    return characterFilePath;
+}

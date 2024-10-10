@@ -14,10 +14,29 @@ export const characterImportString = (characterIdWithCapital: string, characterI
 
 export const containerObjectName = 'characters';
 
+// Function to create a character
 export const createCharacter = async (context: vscode.ExtensionContext) => {
+    const userInput = await getUserInput();
+    if (!userInput) {
+        return;
+    }
+
+    const { characterName, characterId } = userInput;
+
+    const characterFilePath = await createCharacterWithArgs(characterId, characterName);
+
+    // Open the new character file
+    const characterFileUri = vscode.Uri.file(characterFilePath);
+    const characterFile = await vscode.workspace.openTextDocument(characterFileUri);
+    vscode.window.showTextDocument(characterFile);
+};
+
+// Function to get user input for character creation
+const getUserInput = async (): Promise<{ characterName: string, characterId: string } | null> => {
     if (!fs.existsSync(charactersDir())) {
         fs.mkdirSync(charactersDir());
     }
+
     // Ask for the character name
     const characterName = await vscode.window.showInputBox({
         placeHolder: 'Enter character name (e.g., Thomas)',
@@ -25,7 +44,7 @@ export const createCharacter = async (context: vscode.ExtensionContext) => {
     });
 
     if (!characterName) {
-        return vscode.window.showErrorMessage('You must provide a character name.');
+        return null;
     }
 
     let characterId = characterName.trim().toLowerCase().replace(/\s/g, '_');
@@ -37,17 +56,29 @@ export const createCharacter = async (context: vscode.ExtensionContext) => {
         const possibleNewCharacterId = await askForId('Enter character ID (e.g., thomas)', 'Provide the ID for the new character.');
 
         if (!possibleNewCharacterId) {
-            return;
+            return null;
+        }
+
+        if (!isIdValid(possibleNewCharacterId)) {
+            vscode.window.showErrorMessage('Invalid character ID. It must be a valid TypeScript identifier.');
+            return null;
         }
 
         if (doesIdExistsInFolder(charactersDir(), possibleNewCharacterId)) {
-            return vscode.window.showErrorMessage(`A character with the ID "${possibleNewCharacterId}" already exists.`);
+            vscode.window.showErrorMessage(`A character with the ID "${possibleNewCharacterId}" already exists.`);
+            return null;
         }
 
         characterId = possibleNewCharacterId;
     }
 
+    return { characterName, characterId };
+};
+
+// Function to create character file, update register.ts and TWorldState.ts
+export async function createCharacterWithArgs(characterId: string, characterName: string) {
     const characterIdWithCapital = characterId.charAt(0).toUpperCase() + characterId.slice(1);
+
     const newCharacterContent = `import { TCharacter } from 'types/TCharacter';
 
 export const ${characterIdWithCapital}: TCharacter<'${characterId}'> = {
@@ -72,38 +103,28 @@ export type T${characterIdWithCapital}CharacterData = {
     const characterFilePath = path.join(charactersDir(), `${characterId}.ts`);
 
     // Create the new character file
-    fs.writeFile(characterFilePath, newCharacterContent, (err) => {
-        if (err) {
-            return vscode.window.showErrorMessage('Failed to create new character file!');
-        }
-    });
+    await fs.promises.writeFile(characterFilePath, newCharacterContent);
 
     // Update the register.ts
-
-    let registerFileContent = fs.readFileSync(registerFilePath(), 'utf-8');
+    let registerFileContent = await fs.promises.readFile(registerFilePath(), 'utf-8');
     registerFileContent = characterImportString(characterIdWithCapital, characterId) + registerFileContent;
-    const updatedData = await addObjectToOtherObject(
-        containerObjectName, registerFileContent, `${characterId}: ${characterIdWithCapital}`, false);
 
-    fs.writeFileSync(registerFilePath(), updatedData);
-
+    const updatedRegisterContent = await addObjectToOtherObject(
+        containerObjectName, registerFileContent, `${characterId}: ${characterIdWithCapital}`, false
+    );
+    await fs.promises.writeFile(registerFilePath(), updatedRegisterContent);
 
     // Update TWorldState.ts
-    let worldStateFileContent = fs.readFileSync(worldStateFilePath(), 'utf-8');
+    let worldStateFileContent = await fs.promises.readFile(worldStateFilePath(), 'utf-8');
     worldStateFileContent = characterDataImportString(characterIdWithCapital, characterId) + worldStateFileContent;
 
-    worldStateFileContent = await addObjectToOtherObject(
+    const updatedWorldStateContent = await addObjectToOtherObject(
         containerObjectName,
         worldStateFileContent,
         `${characterId}: { ref: TCharacter<'${characterId}'> } & TCharacterData & Partial<T${characterIdWithCapital}CharacterData>`,
-        true);
+        true
+    );
+    await fs.promises.writeFile(worldStateFilePath(), updatedWorldStateContent);
 
-    fs.writeFileSync(worldStateFilePath(), worldStateFileContent);
-
-
-
-    // Open the new character file
-    const characterFileUri = vscode.Uri.file(characterFilePath);
-    const characterFile = await vscode.workspace.openTextDocument(characterFileUri);
-    vscode.window.showTextDocument(characterFile);
-};
+    return characterFilePath;
+}

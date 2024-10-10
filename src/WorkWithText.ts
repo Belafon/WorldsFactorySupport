@@ -70,7 +70,11 @@ function insertNewCodeIntoObjectsContent(
 
     // handle the empty object body as a special case
     if (trimmedContent === '') {
-        return `${parentObjectName}: {\n${contentToInsert}${objectDepth}}`;
+        if (hasEquals) {
+            return `${parentObjectName} = {\n${contentToInsert}${objectDepth}}`;
+        } else {
+            return `${parentObjectName}: {\n${contentToInsert}${objectDepth}}`;
+        }
     }
 
 
@@ -144,7 +148,7 @@ export async function removeFile(filePath: string) {
             }
         }
     }
-    
+
     await vscode.commands.executeCommand('typescript.restartTsServer');
 }
 
