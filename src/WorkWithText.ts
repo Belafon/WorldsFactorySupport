@@ -8,7 +8,7 @@ export const addObjectToOtherObject = async (
     contentToInsert: string,
     hasSemicolon: boolean): Promise<string> => {
 
-    const regex = new RegExp(`(?<![a-zA-Z0-9])${parentObjectName}:\\s*{((?:{[^{}]*}|[^{}])*)}`);
+    const regex = new RegExp(`(?<![a-zA-Z0-9_])${parentObjectName}:\\s*{((?:{[^{}]*}|[^{}])*)}`);
 
     const updatedData = data.replace(regex, (match, innerCode) => {
         return insertNewCodeIntoObjectsContent(innerCode, contentToInsert, match, parentObjectName, false, hasSemicolon);
@@ -23,7 +23,7 @@ export const addObjectToOtherObjectWithEquals = async (
     contentToInsert: string,
     hasSemicolon: boolean): Promise<string> => {
     const parentObjectNameEscaped = escapeRegExp(parentObjectName);
-    const regex = new RegExp(`(?<![a-zA-Z0-9])${parentObjectNameEscaped}\\s*=\\s*{((?:{[^{}]*}|[^{}])*)}`);
+    const regex = new RegExp(`(?<![a-zA-Z0-9_])${parentObjectNameEscaped}\\s*=\\s*{((?:{[^{}]*}|[^{}])*)}`);
     const updatedData = data.replace(regex, (match, innerCode) => {
         return insertNewCodeIntoObjectsContent(innerCode, contentToInsert, match, parentObjectName, true, hasSemicolon);
     });
@@ -100,7 +100,7 @@ function insertNewCodeIntoObjectsContent(
 
 
 export async function removeObjectFromOtherObject(parentObjectName: string, data: string, objectNameToRemove: string): Promise<string> {
-    const regex = new RegExp(`(?<![a-zA-Z0-9])${parentObjectName}:\\s*{((?:{[^{}]*}|[^{}])*)}`);
+    const regex = new RegExp(`(?<![a-zA-Z0-9_])${parentObjectName}:\\s*{((?:{[^{}]*}|[^{}])*)}`);
 
     const updatedData = data.replace(regex, (match, innerCode) => {
         return removeObjectFromContent(innerCode, objectNameToRemove, match, parentObjectName);
@@ -111,14 +111,14 @@ export async function removeObjectFromOtherObject(parentObjectName: string, data
 
 function removeObjectFromContent(innerCode: string, objectNameToRemove: string, match: string, parentObjectName: string): string {
     // find and remove object by regex
-    const regex = new RegExp(`(?<![a-zA-Z0-9])\\s*${objectNameToRemove}:\\s*{((?:{[^{}]*}|[^{}])*)}.*\\n`, 'g');
+    const regex = new RegExp(`(?<![a-zA-Z0-9_])\\s*${objectNameToRemove}:\\s*{((?:{[^{}]*}|[^{}])*)}.*\\n`, 'g');
 
     let updatedMatch = match.replace(regex, '\n');
 
 
     // if nothing changed, we assume that the object is on one line without { }
 
-    const regexOnLineObject = new RegExp(`(?<![a-zA-Z0-9])\\s*${objectNameToRemove}:.*\\n`, 'g');
+    const regexOnLineObject = new RegExp(`(?<![a-zA-Z0-9_])\\s*${objectNameToRemove}:.*\\n`, 'g');
 
     updatedMatch = updatedMatch.replace(regexOnLineObject, '\n');
 
@@ -231,4 +231,34 @@ export const askForId = async (placeHolder: string, prompt: string): Promise<str
         }
     }
     return id;
+};
+
+
+export const extendPipelinedType = async (data: string, typeName: string, typeToInsert: string): Promise<string> => {
+    // Match the type declaration with union types, even across newlines
+    const regex = new RegExp(`(?<![a-zA-Z0-9_])${typeName}\\s*=\\s*([\\s\\S]*?);`, 'm');
+    
+    // Replace the matched part by adding the new type if it's not already present
+    return data.replace(regex, (match, group1) => {
+        let unionTypes = group1.trim();
+        
+        // Remove 'never' from the union if present
+        unionTypes = unionTypes.replace(/\|\s*never(?![a-zA-Z0-9_])/g, '').replace(/(?<![a-zA-Z0-9_])never(?![a-zA-Z0-9_])/g, '');
+        unionTypes = unionTypes.trim();
+
+        // Check if the typeToInsert already exists in the union
+        if (unionTypes.includes(typeToInsert)) {
+            return match; // Return original if it's already there
+        }
+
+        // Add the new typeToInsert, separated by a pipe (|)
+        let updatedUnion = `${unionTypes} |\n\t${typeToInsert}`;
+        if(unionTypes === '') {
+            updatedUnion = `${typeToInsert}`;
+        }
+        
+
+        // Return the updated match with the new union types
+        return match.replace(group1, updatedUnion);
+    });
 };

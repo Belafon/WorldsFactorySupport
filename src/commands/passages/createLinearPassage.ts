@@ -1,4 +1,6 @@
 import * as vscode from 'vscode';
+import { eventFilePostfixWithoutFileType } from '../../Paths';
+import { getExportedPassageName, getPassageIdTypesPropertyName } from '../createPassage';
 
 
 export const createLinearPassage = async (context: vscode.ExtensionContext, 
@@ -7,8 +9,12 @@ export const createLinearPassage = async (context: vscode.ExtensionContext,
     return `// @ts-ignore
 import { DeltaTime } from 'time/Time';
 import { TPassage } from 'types/TPassage';
+import { ${getPassageIdTypesPropertyName(selectedEvent, selectedCharacter)} } from '../${selectedEvent}${eventFilePostfixWithoutFileType}';
+// @ts-ignore
+import { TWorldState } from 'data/TWorldState';
+// @ts-ignore
 
-const passage = (): TPassage<'${selectedEvent}', '${selectedCharacter}'> => ({
+const ${passageId}Passage = (s: TWorldState): TPassage<'${selectedEvent}', '${selectedCharacter}', ${getPassageIdTypesPropertyName(selectedEvent, selectedCharacter)}> => ({
     eventId: '${selectedEvent}',
     characterId: '${selectedCharacter}',
     id: '${passageId}',
@@ -17,6 +23,6 @@ const passage = (): TPassage<'${selectedEvent}', '${selectedCharacter}'> => ({
     nextPassageId: undefined,
 }); 
 
-export default passage;
+export default ${passageId}Passage;
 `;
 };

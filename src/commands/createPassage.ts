@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { addObjectToOtherObjectWithEquals, askForId, doesIdExistsInFolder, isIdValid } from '../WorkWithText';
-import { passageFilePostfix, eventsDir, charactersDir, eventFilePostfix, eventFilePostfixWithoutFileType } from '../Paths';
+import { addObjectToOtherObjectWithEquals, askForId, doesIdExistsInFolder, extendPipelinedType, isIdValid } from '../WorkWithText';
+import { passageFilePostfix, eventsDir, charactersDir, eventFilePostfix, eventFilePostfixWithoutFileType, eventPassagesFilePostfix } from '../Paths';
 import { createScreenPassage } from './passages/createScreenPassage';
 import { createLinearPassage } from './passages/createLinearPassage';
 import { createTransitionPassage } from './passages/createTransitionPassage';
@@ -16,6 +16,18 @@ export enum PassageType {
     Transition = 'Transition',
     LinearDescriber = 'Linear',
 };
+
+export const getExportedPassageName = (passageId: string) => {
+    return `${passageId}Passage`;
+};
+
+export function getPassageIdTypesPropertyName(selectedEvent: string, selectedCharacter: string) {
+    const evnetIdWithCapital = selectedEvent.charAt(0).toUpperCase() + selectedEvent.slice(1);
+    const characterIdWithCapital = selectedCharacter.charAt(0).toUpperCase() + selectedCharacter.slice(1);
+    return `T${evnetIdWithCapital}${characterIdWithCapital}PassageId`;
+}
+
+
 
 
 export const createPassage = async (context: vscode.ExtensionContext) => {
@@ -50,7 +62,7 @@ export const createPassage = async (context: vscode.ExtensionContext) => {
     }
 
     // Check if the events file exists
-    const eventFilePath = path.join(folderPathOfSelectedEvent, selectedEvent + eventFilePostfix);
+    const eventFilePath = path.join(folderPathOfSelectedEvent, selectedEvent + eventPassagesFilePostfix);
 
     if (!fs.existsSync(eventFilePath)) {
         return vscode.window.showErrorMessage(`Event file ${eventFilePath} does not exist.`);
@@ -175,17 +187,32 @@ export async function createPassageWithArgs(args: PassageArgs) {
 
 
 
-    // Update event file with passage id
-
-    // Read the event file
+    // Update eventPassages file 
 
     let eventFileData = fs.readFileSync(args.eventFilePath, 'utf8');
 
+    // Add import statement to the event file with the new passsage
+    const importStatement = `import ${getExportedPassageName(args.passageId)} from './${args.selectedCharacter}.${containerObjectName}/${args.passageId}.${args.selectedPassageType.toLowerCase().replace(' ', '_')}';`;
+    eventFileData = importStatement + '\n' + eventFileData;
+
     // Add the passage id to the event file, to the eventEventPassages object
     const fullPassageId = `${args.selectedEvent}-${args.selectedCharacter}-${args.passageId}`;
+    // put this into the object 'kingdom-annie-intro': introPassage,
+    const passageIdTypesPropertyName = getPassageIdTypesPropertyName(args.selectedEvent, ""); 
     let updateEventFileContent = await addObjectToOtherObjectWithEquals(
-        eventPassagesPropertyName(args.selectedEvent), eventFileData, `'${fullPassageId}': () => import('./${args.selectedCharacter}.${containerObjectName}/${passageFileNameWithoutPostfix}')`, false);
-
+        eventPassagesPropertyName(args.selectedEvent) + `: Record<${passageIdTypesPropertyName}, (s: TWorldState, e: Engine) => TEventPassage<'${args.selectedEvent}'>>`, eventFileData, `'${fullPassageId}': ${getExportedPassageName(args.passageId)}`, false);
+    
+    const eventCharacterPassageIdProeprtyName = getPassageIdTypesPropertyName(args.selectedEvent, args.selectedCharacter);
+    
+    // Add TEventCharacterPassageId type to the end of the file
+    // find TEventCharacterPassageId type according selected event and character if exists
+    // if not exists, create a new one
+    if(updateEventFileContent.includes(eventCharacterPassageIdProeprtyName)) {
+        updateEventFileContent = await extendPipelinedType(updateEventFileContent, eventCharacterPassageIdProeprtyName, `'${fullPassageId}'`);
+    } else {
+        updateEventFileContent = await extendPipelinedType(updateEventFileContent, passageIdTypesPropertyName, eventCharacterPassageIdProeprtyName);
+        updateEventFileContent += `\nexport type ${eventCharacterPassageIdProeprtyName} = '${fullPassageId}';\n`;
+    }
 
     try {
         await fs.promises.writeFile(args.eventFilePath, updateEventFileContent);

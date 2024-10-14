@@ -14,31 +14,35 @@ import {
   locationsDir,
   registerFilePath,
   worldStateFilePath,
+  eventPassagesFilePostfix,
 } from "../Paths";
+import { getPassageIdTypesPropertyName } from "./createPassage";
 
 // Generates the import string for event data when selected, returns it as a string
 export const eventsDataImportString = (
   selectedEvent: string,
   selectedEventWithCapital: string
 ): string => {
-  return `import { T${selectedEventWithCapital}${type}Data } from './${containerObjectName}/${selectedEvent}/${selectedEvent}${eventFilePostfixWithoutFileType}';\n`;
-};
-
-// Generates the import string for event objects and passages, returns it as a string
-export const eventsImportingString = (eventId: string): string => {
-  return `import { ${eventId}${type}, ${eventPassagesPropertyName(
-    eventId
-  )} } from './${containerObjectName}/${eventId}/${eventId}${eventFilePostfixWithoutFileType}';\n`;
+  return `import { T${selectedEventWithCapital}${type}Data } from './${containerEventsObjectName}/${selectedEvent}/${selectedEvent}${eventFilePostfixWithoutFileType}';\n`;
 };
 
 // Constants for container name and type to maintain consistent naming conventions
-export const containerObjectName = "events";
+export const containerEventsObjectName = "events";
+export const containerPassagesObjectName = "passages";
 export const type = "Event";
 
 // Returns the property name for event passages based on eventId
 export const eventPassagesPropertyName = (eventId: string): string => {
   return `${eventId}EventPassages`;
 };
+
+export function getImportEventPassagesFile(eventFileData: TEventFileData): string {
+  return `${eventFileData.eventId}: () => import('./${containerEventsObjectName}/${eventFileData.eventId}/${eventFileData.eventId}.passages')`;
+}
+
+export function getImportEventFile(eventFileData: TEventFileData): string {
+  return `${eventFileData.eventId}: () => import('./${containerEventsObjectName}/${eventFileData.eventId}/${eventFileData.eventId}${eventFilePostfixWithoutFileType}')`;
+}
 
 // Type definition for the event file data structure
 export type TEventFileData = {
@@ -50,7 +54,9 @@ export type TEventFileData = {
   location: string;
 };
 
-
+export const eventsImportingStringInRegister = (eventId: string) => {
+  return `import { ${eventId}Event } from './${containerEventsObjectName}/${eventId}/${eventId}${eventFilePostfixWithoutFileType}';\n`;
+};
 
 
 // Function to create a new event
@@ -69,8 +75,6 @@ export const createEvent = async (
   const newEventContent = `// @ts-ignore
 import { Time } from 'time/Time';
 import { TEvent } from 'types/TEvent';
-// @ts-ignore
-import { TEventPassage } from 'types/TPassage';
 
 export const ${eventFileData.eventId}Event: TEvent<'${eventFileData.eventId
     }'> = {
@@ -91,17 +95,22 @@ export const ${eventFileData.eventId}Event: TEvent<'${eventFileData.eventId
 };
 
 export type T${eventIdWithCapital}EventData = {
-\tvoid?: void;
+\t
+};
+`;
+
+
+  const newEventPassagesContent = `import { Engine } from 'code/Engine/ts/Engine';
+import { TWorldState } from 'data/TWorldState';
+import { TEventPassage } from 'types/TPassage';
+
+export type ${getPassageIdTypesPropertyName(eventFileData.eventId, "")} = never;
+
+const ${eventPassagesPropertyName(eventFileData.eventId)}: Record<${getPassageIdTypesPropertyName(eventFileData.eventId, "")}, (s: TWorldState, e: Engine) => TEventPassage<'${eventFileData.eventId}'>> = {
+\t
 };
 
-export const ${eventPassagesPropertyName(eventFileData.eventId)} = {
-\t
-} as const;
-
-// test
-// Object.values(${eventPassagesPropertyName(eventFileData.eventId)}).forEach(
-// \t(item: () => Promise<{ default: () => TEventPassage<'${eventFileData.eventId}'>}>) => void item
-// );
+export default ${eventPassagesPropertyName(eventFileData.eventId)};    
 `;
 
   // Add a new folder for the event under the events directory
@@ -111,7 +120,7 @@ export const ${eventPassagesPropertyName(eventFileData.eventId)} = {
     vscode.window.showErrorMessage("Directory cannot be created");
   }
 
-  // Create a new event file
+  // Create a new event file .event.ts
   const eventFilePath = path.join(
     eventsDir(),
     eventFileData.eventId,
@@ -120,48 +129,76 @@ export const ${eventPassagesPropertyName(eventFileData.eventId)} = {
   fs.writeFile(eventFilePath, newEventContent, (err) => {
     if (err) {
       return vscode.window.showErrorMessage(
-        "Failed to create new location file!"
+        "Failed to create new event file!"
       );
     }
   });
 
-  // Read the register.ts file, prepend the import string and update it with the new event
+
+  // Create Passages.ts file
+
+  const eventPassagesFilePath = path.join(
+    eventsDir(),
+    eventFileData.eventId,
+    eventFileData.eventId + eventPassagesFilePostfix
+  );
+
+  fs.writeFile(eventPassagesFilePath, newEventPassagesContent, (err) => {
+    if (err) {
+      return vscode.window.showErrorMessage(
+        "Failed to create new event passages file!"
+      );
+    }
+  });
+
+
+
+  // Update register.ts
+
   let registerFileData = await fs.promises.readFile(registerFilePath(), "utf8");
-  registerFileData =
-    eventsImportingString(eventFileData.eventId) + registerFileData;
+  registerFileData = eventsImportingStringInRegister(eventFileData.eventId) + registerFileData;
+
+  // village: () => import('./events/village/village.event'),
+
+
   let updatedData = await addObjectToOtherObject(
-    containerObjectName,
+    containerEventsObjectName,
     registerFileData,
     `${eventFileData.eventId}: ${eventFileData.eventId}${type}`,
     false
   );
+
   updatedData = await addObjectToOtherObject(
-    "passages",
+    containerPassagesObjectName,
     updatedData,
-    `...${eventPassagesPropertyName(eventFileData.eventId)}`,
+    getImportEventPassagesFile(eventFileData),
     false
   );
 
-  await fs.promises.writeFile(registerFilePath(), updatedData);
+await fs.promises.writeFile(registerFilePath(), updatedData);
 
-  // Update TWorldState.ts file with event information
-  let worldStateFileData = await fs.promises.readFile(
-    worldStateFilePath(),
-    "utf8"
-  );
-  let updatedWorldStateFileData = await addObjectToOtherObject(
-    containerObjectName,
-    worldStateFileData,
-    `${eventFileData.eventId}: { ref: T${type}<'${eventFileData.eventId}'> } & Partial<T${eventIdWithCapital}${type}Data>`,
-    true
-  );
-  updatedWorldStateFileData =
-    eventsDataImportString(eventFileData.eventId, eventIdWithCapital) +
-    updatedWorldStateFileData;
 
-  await fs.promises.writeFile(worldStateFilePath(), updatedWorldStateFileData);
 
-  return eventFilePath;
+
+// Update TWorldState.ts
+
+let worldStateFileData = await fs.promises.readFile(
+  worldStateFilePath(),
+  "utf8"
+);
+let updatedWorldStateFileData = await addObjectToOtherObject(
+  containerEventsObjectName,
+  worldStateFileData,
+  `${eventFileData.eventId}: { ref: T${type} <'${eventFileData.eventId}'> } & T${eventIdWithCapital}${type}Data`,
+  true
+);
+updatedWorldStateFileData =
+  eventsDataImportString(eventFileData.eventId, eventIdWithCapital) +
+  updatedWorldStateFileData;
+
+await fs.promises.writeFile(worldStateFilePath(), updatedWorldStateFileData);
+
+return eventFilePath;
 };
 
 

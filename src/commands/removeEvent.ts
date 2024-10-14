@@ -4,7 +4,7 @@ import * as path from 'path';
 import { removeFolder, removeLineByMatch, removeObjectFromOtherObject, removeTextFromFile } from '../WorkWithText';
 import { eventsDir, worldStateFilePath } from '../Paths';
 import { registerFilePath } from '../Paths';
-import { containerObjectName, eventsDataImportString, eventsImportingString } from './createEvent';
+import { containerEventsObjectName, containerPassagesObjectName, eventsDataImportString, eventsImportingStringInRegister } from './createEvent';
 
 export const removeEvent = async (context: vscode.ExtensionContext) => {
     if (!vscode.workspace.workspaceFolders) {
@@ -43,26 +43,21 @@ export const removeEvent = async (context: vscode.ExtensionContext) => {
     }
 
     await removeFolder(eventPath);
+    
 
 
     // update the register.ts
 
     let registerFileData = await fs.readFileSync(registerFilePath(), 'utf-8');
 
-    // Remove import statement
-    let selectedEventWithCapital = selectedEvent.charAt(0).toUpperCase() + selectedEvent.slice(1);
-    registerFileData = await removeTextFromFile(
-        registerFileData,
-        eventsImportingString(selectedEvent));
-
     // Remove event from events object
-    registerFileData = await removeObjectFromOtherObject(containerObjectName, registerFileData, selectedEvent);
-
-    // remove ...eventIdEventPassages from passages object
-    registerFileData = removeLineByMatch(registerFileData, `...${selectedEvent}EventPassages`);
+    registerFileData = await removeObjectFromOtherObject(containerEventsObjectName, registerFileData, selectedEvent);
+    registerFileData = await removeObjectFromOtherObject(containerPassagesObjectName, registerFileData, selectedEvent);
 
     fs.writeFileSync(registerFilePath(), registerFileData);
 
+    // remove import satement
+    registerFileData = await removeLineByMatch(registerFileData, eventsImportingStringInRegister(selectedEvent));
 
 
 
@@ -70,6 +65,7 @@ export const removeEvent = async (context: vscode.ExtensionContext) => {
     // update the TWorldState.ts
 
     let worldStateFileData = fs.readFileSync(worldStateFilePath(), 'utf-8');
+    let selectedEventWithCapital = selectedEvent.charAt(0).toUpperCase() + selectedEvent.slice(1);
 
     // Remove import statement
     worldStateFileData = await removeTextFromFile(
@@ -77,7 +73,7 @@ export const removeEvent = async (context: vscode.ExtensionContext) => {
         eventsDataImportString(selectedEvent, selectedEventWithCapital));
 
     // Remove event from events object
-    worldStateFileData = await removeObjectFromOtherObject(containerObjectName, worldStateFileData, selectedEvent);
+    worldStateFileData = await removeObjectFromOtherObject(containerEventsObjectName, worldStateFileData, selectedEvent);
 
     fs.writeFileSync(worldStateFilePath(), worldStateFileData);
 

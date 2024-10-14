@@ -1,4 +1,6 @@
 import * as vscode from 'vscode';
+import { getExportedPassageName, getPassageIdTypesPropertyName } from '../createPassage';
+import { eventFilePostfixWithoutFileType } from '../../Paths';
 
 
 export const createTransitionPassage = async (context: vscode.ExtensionContext, 
@@ -7,8 +9,9 @@ export const createTransitionPassage = async (context: vscode.ExtensionContext,
     return `// @ts-ignore
 import { DeltaTime } from 'time/Time';
 import { TPassage } from 'types/TPassage';
+import { ${getPassageIdTypesPropertyName(selectedEvent, selectedCharacter)} } from '../${selectedEvent}${eventFilePostfixWithoutFileType}';
 
-const passage = (): TPassage<'${selectedEvent}', '${selectedCharacter}'> => ({
+const ${passageId}Passage = (): TPassage<'${selectedEvent}', '${selectedCharacter}', ${getPassageIdTypesPropertyName(selectedEvent, selectedCharacter)}> => ({
     eventId: '${selectedEvent}',
     characterId: '${selectedCharacter}',
     id: '${passageId}',
@@ -16,6 +19,6 @@ const passage = (): TPassage<'${selectedEvent}', '${selectedCharacter}'> => ({
     nextPassageId: '${selectedEvent}-${selectedCharacter}-',
 });
 
-export default passage;
+export default ${passageId}Passage;
     `;
 };

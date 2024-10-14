@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { generateContentTemplate } from './generatorUserInputTemplate';
-import { charactersDir, eventFilePostfix, eventsDir } from '../Paths';
+import { charactersDir, eventFilePostfix, eventPassagesFilePostfix, eventsDir } from '../Paths';
 import * as fs from 'fs';
 import { getScreenPassageContent } from '../commands/passages/createScreenPassage';
 import { containerObjectName, createPassageWithArgs, PassageArgs, PassageType } from '../commands/createPassage';
@@ -29,7 +29,7 @@ export async function generateContentPassages(context: vscode.ExtensionContext) 
 
             const folderPathOfSelectedEvent = path.join(eventsDir(), eventId);
             const folderPathOfSelectedCharacter = path.join(folderPathOfSelectedEvent, characterId + '.' + containerObjectName);
-            const eventFilePath = path.join(folderPathOfSelectedEvent, eventId + eventFilePostfix);
+            const eventFilePath = path.join(folderPathOfSelectedEvent, eventId + eventPassagesFilePostfix);
             
 
             // choose random passage link
