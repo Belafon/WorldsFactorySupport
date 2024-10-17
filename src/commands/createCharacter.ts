@@ -84,8 +84,8 @@ export async function createCharacterWithArgs(characterId: string, characterName
 export const ${characterIdWithCapital}: TCharacter<'${characterId}'> = {
 \tid: '${characterId}',
 \tname: _('${characterName}'),
-\tgeneral_description: \`\`,
-\tstart_passage_Id: undefined,
+\tgeneralDescription: \`\`,
+\tstartPassageId: undefined,
 \t
 \tinit: {
 \t\thealth: 100,
