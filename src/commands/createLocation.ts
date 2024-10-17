@@ -82,7 +82,7 @@ export async function createLocationWithArgs(locationId: string, locationName: s
 export const ${locationId}Location: TLocation<'${locationId}'> = {
 \tid: '${locationId}',
 \tname: _('${locationName}'),
-\tdescription: '',
+\tdescription: \`\`,
 \t
 \tlocalCharacters: [
 \t],
@@ -91,7 +91,7 @@ export const ${locationId}Location: TLocation<'${locationId}'> = {
 };
 
 export type T${locationIdWithCapital}LocationData = {
-\tvoid?: void;
+\t
 };
 `;
 

@@ -23,7 +23,7 @@ export const locationFilePostfixWithoutFileType = '.location';
 
 export const eventFilePostfix = '.event.ts';
 export const eventPassagesFilePostfix = '.passages.ts';
-export const evnetPassagesFilePostfixWithoutFileType = 'Passages';
+export const evnetPassagesFilePostfixWithoutFileType = '.passages';
 export const eventFilePostfixWithoutFileType = '.event';
 
 export const eventsDir = () => path.join(workspaceFolders()!, 'src', 'data', 'events');

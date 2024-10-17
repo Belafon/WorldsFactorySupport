@@ -68,23 +68,23 @@ export const createEvent = async (
     fs.mkdirSync(eventsDir());
   }
 
+  if (eventFileData.location === "") {
+    eventFileData.location = "unknown";
+  }
+
   // Capitalize event ID for usage in certain parts of the code
   const eventIdWithCapital =
     eventFileData.eventId.charAt(0).toUpperCase() +
     eventFileData.eventId.slice(1);
-  const newEventContent = `// @ts-ignore
-import { Time } from 'time/Time';
+  const newEventContent = `import { Time, TimeRange } from 'time/Time';
 import { TEvent } from 'types/TEvent';
 
 export const ${eventFileData.eventId}Event: TEvent<'${eventFileData.eventId
     }'> = {
 \teventId: '${eventFileData.eventId}',
 \ttitle: _('${eventIdWithCapital} Event'),
-\tdescription: '${eventFileData.description}',
-\ttimeRange: {
-\t\tstart: Time.fromString('${eventFileData.timeRangeStart}'),
-\t\tend: Time.fromString('${eventFileData.timeRangeEnd}'),
-\t},
+\tdescription: \`${eventFileData.description}\`,
+\ttimeRange: TimeRange.fromStrings('${eventFileData.timeRangeStart}', '${eventFileData.timeRangeEnd}'),
 \tlocation: '${eventFileData.location}',
 \t
 \tchildren: [],
@@ -175,30 +175,30 @@ export default ${eventPassagesPropertyName(eventFileData.eventId)};
     false
   );
 
-await fs.promises.writeFile(registerFilePath(), updatedData);
+  await fs.promises.writeFile(registerFilePath(), updatedData);
 
 
 
 
-// Update TWorldState.ts
+  // Update TWorldState.ts
 
-let worldStateFileData = await fs.promises.readFile(
-  worldStateFilePath(),
-  "utf8"
-);
-let updatedWorldStateFileData = await addObjectToOtherObject(
-  containerEventsObjectName,
-  worldStateFileData,
-  `${eventFileData.eventId}: { ref: T${type} <'${eventFileData.eventId}'> } & T${eventIdWithCapital}${type}Data`,
-  true
-);
-updatedWorldStateFileData =
-  eventsDataImportString(eventFileData.eventId, eventIdWithCapital) +
-  updatedWorldStateFileData;
+  let worldStateFileData = await fs.promises.readFile(
+    worldStateFilePath(),
+    "utf8"
+  );
+  let updatedWorldStateFileData = await addObjectToOtherObject(
+    containerEventsObjectName,
+    worldStateFileData,
+    `${eventFileData.eventId}: { ref: T${type} <'${eventFileData.eventId}'> } & T${eventIdWithCapital}${type}Data`,
+    true
+  );
+  updatedWorldStateFileData =
+    eventsDataImportString(eventFileData.eventId, eventIdWithCapital) +
+    updatedWorldStateFileData;
 
-await fs.promises.writeFile(worldStateFilePath(), updatedWorldStateFileData);
+  await fs.promises.writeFile(worldStateFilePath(), updatedWorldStateFileData);
 
-return eventFilePath;
+  return eventFilePath;
 };
 
 
@@ -207,15 +207,14 @@ export const askPlayerForDataAndCreateEvent = async (
   context: vscode.ExtensionContext
 ) => {
   // Ask the user for event ID, ensuring that input is trimmed, lowercased, and formatted correctly
-  let title = await askForId(
+  let eventId = await askForId(
     "Enter event id",
     "Provide the id for the new event."
   );
-  if (!title) {
+  if (!eventId) {
     return;
   }
 
-  let eventId = title.trim().toLowerCase().replace(/\s/g, "_");
 
   // Check if an event with the same ID already exists, prompt for a new one if necessary
   if (doesIdExistsInFolder(eventsDir(), eventId, true)) {

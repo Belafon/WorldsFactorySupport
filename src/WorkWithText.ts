@@ -210,21 +210,22 @@ export const removeLineByMatch = (data: string, match: string) => {
  * can contain '-' and '_'
  */
 export const isIdValid = (id: string): boolean => {
-    return /^[a-zA-Z][a-zA-Z0-9_]*$/.test(id);
+    return /^[a-zA-Zá-žÁ-Ž][a-zA-Z0-9_á-žÁ-Ž]*$/.test(id);
 };
 
 export const askForId = async (placeHolder: string, prompt: string): Promise<string | undefined> => {
     let id: string | undefined = '';
-    id = id.trim().toLocaleLowerCase().replace(/\s/g, '_');
     while (!isIdValid(id)) {
         id = await vscode.window.showInputBox({
             placeHolder,
             prompt,
         });
-
+        
         if (id === undefined) {
             return undefined;
         }
+        
+        id = id.trim().toLocaleLowerCase().replace(/\s/g, '_');
 
         if (!isIdValid(id)) {
             vscode.window.showErrorMessage('Invalid id. Id cannot start with a number and has to contain at least one character.');

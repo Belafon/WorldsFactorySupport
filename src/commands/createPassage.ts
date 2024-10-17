@@ -179,20 +179,15 @@ export async function createPassageWithArgs(args: PassageArgs) {
     const passageFileNameWithoutPostfix = `${args.passageId}.${args.selectedPassageType.toLowerCase().replace(' ', '_')}`;
     const passageFileName = passageFileNameWithoutPostfix + passageFilePostfix;
     const passageFilePath = path.join(args.folderPathOfSelectedCharacter, passageFileName);
-    await fs.writeFile(passageFilePath, args.newPassageContent, (err) => {
-        if (err) {
-            return vscode.window.showErrorMessage('Failed to create new location file!');
-        }
-    });
+    fs.promises.writeFile(passageFilePath, args.newPassageContent);
 
 
+    // Update event.passages file 
 
-    // Update eventPassages file 
-
-    let eventFileData = fs.readFileSync(args.eventFilePath, 'utf8');
+    let eventFileData = await fs.promises.readFile(args.eventFilePath, 'utf8');
 
     // Add import statement to the event file with the new passsage
-    const importStatement = `import ${getExportedPassageName(args.passageId)} from './${args.selectedCharacter}.${containerObjectName}/${args.passageId}.${args.selectedPassageType.toLowerCase().replace(' ', '_')}';`;
+    const importStatement = `import { ${getExportedPassageName(args.passageId)} } from './${args.selectedCharacter}.${containerObjectName}/${args.passageId}.${args.selectedPassageType.toLowerCase().replace(' ', '_')}';`;
     eventFileData = importStatement + '\n' + eventFileData;
 
     // Add the passage id to the event file, to the eventEventPassages object
@@ -221,4 +216,3 @@ export async function createPassageWithArgs(args: PassageArgs) {
     }
     return passageFilePath;
 }
-

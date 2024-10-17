@@ -31,8 +31,7 @@ export function getScreenPassageContent(
     : string | PromiseLike<string> {
 
     if(linkPassageId === undefined) {
-        return  `// @ts-ignore
-import { DeltaTime } from 'time/Time';
+        return  `import { DeltaTime } from 'time/Time';
 import { TPassage } from 'types/TPassage';
 import { ${getPassageIdTypesPropertyName(selectedEvent, selectedCharacter)} } from '../${selectedEvent}${eventPassagesFilePostfixWithoutFileType}';
 import { TWorldState } from 'data/TWorldState';
@@ -52,6 +51,12 @@ export const ${passageId}Passage = (s: TWorldState, e: Engine): TPassage<'${sele
         image: '',
     
         body: [
+            {
+                text: _(''),
+                links: [
+
+                ],
+            },
         ],
     };
 }
@@ -59,8 +64,7 @@ export const ${passageId}Passage = (s: TWorldState, e: Engine): TPassage<'${sele
 `;
     }
 
-    return `// @ts-ignore
-import { DeltaTime } from 'time/Time';
+    return `import { DeltaTime } from 'time/Time';
 import { TPassage } from 'types/TPassage';
 import { ${getPassageIdTypesPropertyName(selectedEvent, selectedCharacter)} } from '../${selectedEvent}${eventPassagesFilePostfixWithoutFileType}';
 import { TWorldState } from 'data/TWorldState';
