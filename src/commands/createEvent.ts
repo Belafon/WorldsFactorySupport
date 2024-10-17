@@ -84,7 +84,7 @@ export const ${eventFileData.eventId}Event: TEvent<'${eventFileData.eventId
 \teventId: '${eventFileData.eventId}',
 \ttitle: _('${eventIdWithCapital} Event'),
 \tdescription: \`${eventFileData.description}\`,
-\ttimeRange: TimeRange.fromStrings('${eventFileData.timeRangeStart}', '${eventFileData.timeRangeEnd}'),
+\ttimeRange: TimeRange.fromString('${eventFileData.timeRangeStart}', '${eventFileData.timeRangeEnd}'),
 \tlocation: '${eventFileData.location}',
 \t
 \tchildren: [],
