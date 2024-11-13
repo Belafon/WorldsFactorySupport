@@ -22,13 +22,11 @@ import { generateContentCharacters } from "./contentGenerators/charactersGenerat
 import { generateContentEvents } from "./contentGenerators/eventsGenerator";
 import { generateContentPassages } from "./contentGenerators/passagesGenerator";
 import { generateContentSideCharacters } from "./contentGenerators/sideCharactersGenerator";
+import { startNodeServerCommand, stopNodeServerCommand } from "./server/server";
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
-  //
-  // Basic commands
-  //
 
   const createLocationCommand = vscode.commands.registerCommand(
     "WorldsFactorySupport.createLocation",
@@ -89,7 +87,7 @@ export function activate(context: vscode.ExtensionContext) {
   const removeEventCommand = vscode.commands.registerCommand(
     "WorldsFactorySupport.removeEvent",
     async () => {
-      await removeEvent(context);
+      await removeEvent();
     }
   );
   context.subscriptions.push(removeEventCommand);
@@ -106,7 +104,7 @@ export function activate(context: vscode.ExtensionContext) {
   const removePassageCommand = vscode.commands.registerCommand(
     "WorldsFactorySupport.removePassage",
     async () => {
-      await removePassage(context);
+      await removePassage();
     }
   );
 
@@ -177,6 +175,23 @@ export function activate(context: vscode.ExtensionContext) {
 
   activatePassageEventNameCompletion(context);
 
+  const startNodeServerCommandD = vscode.commands.registerCommand(
+    "WorldsFactorySupport.startNodeServer",
+    async () => {
+      startNodeServerCommand();
+    }
+  );
+
+  const stopNodeServerCommandD = vscode.commands.registerCommand(
+    "WorldsFactorySupport.stopNodeServer",
+    async () => {
+      stopNodeServerCommand();
+    }
+  );
+
+  context.subscriptions.push(stopNodeServerCommandD);
+
+  context.subscriptions.push(startNodeServerCommandD);
 
   //activateEditor(context);
 }

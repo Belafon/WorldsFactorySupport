@@ -3,6 +3,7 @@ const esbuild = require("esbuild");
 const production = process.argv.includes('--production');
 const watch = process.argv.includes('--watch');
 
+
 /**
  * @type {import('esbuild').Plugin}
  */
@@ -42,6 +43,8 @@ async function main() {
 			esbuildProblemMatcherPlugin,
 		],
 	});
+
+
 	if (watch) {
 		await ctx.watch();
 	} else {

@@ -3,7 +3,7 @@ import { getExportedPassageName, getPassageIdTypesPropertyName } from '../create
 import { eventFilePostfixWithoutFileType } from '../../Paths';
 
 
-export const createTransitionPassage = async (context: vscode.ExtensionContext, 
+export const createTransitionPassage = async ( 
     selectedEvent: string, selectedCharacter: string, passageId: string): Promise<string> => {
 
     return `// @ts-ignore

@@ -234,6 +234,27 @@ export const askForId = async (placeHolder: string, prompt: string): Promise<str
     return id;
 };
 
+export const askForTitle = async (placeHolder: string, prompt: string): Promise<string | undefined> => {
+    let title: string | undefined = '';
+    while (title === '') {
+        title = await vscode.window.showInputBox({
+            placeHolder,
+            prompt,
+        });
+        
+        if (title === undefined) {
+            return undefined;
+        }
+        
+        title = title.trim();
+    }
+    return title;
+};
+
+export const getIdFromTitle = (title: string): string => {
+    return title.trim().toLowerCase().replace(/\s/g, '_');
+};
+
 
 export const extendPipelinedType = async (data: string, typeName: string, typeToInsert: string): Promise<string> => {
     // Match the type declaration with union types, even across newlines

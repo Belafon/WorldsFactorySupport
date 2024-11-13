@@ -4,7 +4,9 @@ import * as path from "path";
 import {
   addObjectToOtherObject,
   askForId,
+  askForTitle,
   doesIdExistsInFolder,
+  getIdFromTitle,
   isIdValid,
 } from "../WorkWithText";
 import {
@@ -72,6 +74,14 @@ export const createEvent = async (
     eventFileData.location = "unknown";
   }
 
+  if (eventFileData.timeRangeStart === "") {
+    eventFileData.timeRangeStart = "0.0 0:0";
+  }
+
+  if (eventFileData.timeRangeEnd === "") {
+    eventFileData.timeRangeEnd = "0.0 0:0";
+  }
+
   // Capitalize event ID for usage in certain parts of the code
   const eventIdWithCapital =
     eventFileData.eventId.charAt(0).toUpperCase() +
@@ -82,7 +92,7 @@ import { TEvent } from 'types/TEvent';
 export const ${eventFileData.eventId}Event: TEvent<'${eventFileData.eventId
     }'> = {
 \teventId: '${eventFileData.eventId}',
-\ttitle: _('${eventIdWithCapital} Event'),
+\ttitle: _('${eventFileData.title}'),
 \tdescription: \`${eventFileData.description}\`,
 \ttimeRange: TimeRange.fromString('${eventFileData.timeRangeStart}', '${eventFileData.timeRangeEnd}'),
 \tlocation: '${eventFileData.location}',
@@ -207,14 +217,16 @@ export const askPlayerForDataAndCreateEvent = async (
   context: vscode.ExtensionContext
 ) => {
   // Ask the user for event ID, ensuring that input is trimmed, lowercased, and formatted correctly
-  let eventId = await askForId(
-    "Enter event id",
-    "Provide the id for the new event."
+  let title = await askForTitle(
+    "Enter event title",
+    "Provide the title for the new event."
   );
-  if (!eventId) {
+
+  if (!title) {
     return;
   }
 
+  let eventId = await getIdFromTitle(title); 
 
   // Check if an event with the same ID already exists, prompt for a new one if necessary
   if (doesIdExistsInFolder(eventsDir(), eventId, true)) {
@@ -233,7 +245,7 @@ export const askPlayerForDataAndCreateEvent = async (
   }
 
   const eventFilePath = createEvent({
-    title: "",
+    title: title,
     eventId: eventId,
     description: "",
     timeRangeStart: "",

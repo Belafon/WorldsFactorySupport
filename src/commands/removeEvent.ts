@@ -6,7 +6,7 @@ import { eventsDir, worldStateFilePath } from '../Paths';
 import { registerFilePath } from '../Paths';
 import { containerEventsObjectName, containerPassagesObjectName, eventsDataImportString, eventsImportingStringInRegister } from './createEvent';
 
-export const removeEvent = async (context: vscode.ExtensionContext) => {
+export const removeEvent = async () => {
     if (!vscode.workspace.workspaceFolders) {
         return vscode.window.showErrorMessage('Please open a project folder first');
     }
@@ -30,10 +30,14 @@ export const removeEvent = async (context: vscode.ExtensionContext) => {
     }
 
     // Check if the event has any passages, (just if the event folder has another folder named *.passages)
-    const eventPath = path.join(eventsDir(), selectedEvent);
+    await removeEventById(selectedEvent);
+};
+
+export const removeEventById = async (eventIdToRemove: string) => {
+    const eventPath = path.join(eventsDir(), eventIdToRemove);
     if (fs.readdirSync(eventPath).some(file => file.endsWith('.passages'))) {
         const userResponse = await vscode.window.showWarningMessage(
-            `The event "${selectedEvent}" has some passages, are you sure you want to remove it?`,
+            `The event "${eventIdToRemove}" has some passages, are you sure you want to remove it?`,
             'Yes', 'No'
         );
 
@@ -43,21 +47,19 @@ export const removeEvent = async (context: vscode.ExtensionContext) => {
     }
 
     await removeFolder(eventPath);
-    
-
 
     // update the register.ts
 
     let registerFileData = await fs.readFileSync(registerFilePath(), 'utf-8');
 
     // Remove event from events object
-    registerFileData = await removeObjectFromOtherObject(containerEventsObjectName, registerFileData, selectedEvent);
-    registerFileData = await removeObjectFromOtherObject(containerPassagesObjectName, registerFileData, selectedEvent);
+    registerFileData = await removeObjectFromOtherObject(containerEventsObjectName, registerFileData, eventIdToRemove);
+    registerFileData = await removeObjectFromOtherObject(containerPassagesObjectName, registerFileData, eventIdToRemove);
 
     fs.writeFileSync(registerFilePath(), registerFileData);
 
     // remove import satement
-    registerFileData = await removeLineByMatch(registerFileData, eventsImportingStringInRegister(selectedEvent));
+    registerFileData = await removeLineByMatch(registerFileData, eventsImportingStringInRegister(eventIdToRemove));
 
 
 
@@ -65,16 +67,15 @@ export const removeEvent = async (context: vscode.ExtensionContext) => {
     // update the TWorldState.ts
 
     let worldStateFileData = fs.readFileSync(worldStateFilePath(), 'utf-8');
-    let selectedEventWithCapital = selectedEvent.charAt(0).toUpperCase() + selectedEvent.slice(1);
+    let selectedEventWithCapital = eventIdToRemove.charAt(0).toUpperCase() + eventIdToRemove.slice(1);
 
     // Remove import statement
     worldStateFileData = await removeTextFromFile(
         worldStateFileData,
-        eventsDataImportString(selectedEvent, selectedEventWithCapital));
+        eventsDataImportString(eventIdToRemove, selectedEventWithCapital));
 
     // Remove event from events object
-    worldStateFileData = await removeObjectFromOtherObject(containerEventsObjectName, worldStateFileData, selectedEvent);
+    worldStateFileData = await removeObjectFromOtherObject(containerEventsObjectName, worldStateFileData, eventIdToRemove);
 
     fs.writeFileSync(worldStateFilePath(), worldStateFileData);
-
 };

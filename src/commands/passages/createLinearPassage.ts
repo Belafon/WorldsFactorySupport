@@ -3,7 +3,7 @@ import { eventFilePostfixWithoutFileType } from '../../Paths';
 import { getExportedPassageName, getPassageIdTypesPropertyName } from '../createPassage';
 
 
-export const createLinearPassage = async (context: vscode.ExtensionContext, 
+export const createLinearPassage = async ( 
     selectedEvent: string, selectedCharacter: string, passageId: string): Promise<string> => {
 
     return `import { DeltaTime } from 'time/Time';
@@ -15,6 +15,7 @@ const ${passageId}Passage = (s: TWorldState): TPassage<'${selectedEvent}', '${se
     eventId: '${selectedEvent}',
     characterId: '${selectedCharacter}',
     id: '${passageId}',
+    title: _('${passageId}'),
     type: 'linear',
     description: \`\`,
     nextPassageId: undefined,

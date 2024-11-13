@@ -1,0 +1,219 @@
+openapi: 3.1.0
+info:
+  title: WorldsFactory API
+  version: 1.0.0
+  description: API for WorldsFactory VS Code Extension
+servers:
+  - url: http://localhost:3149
+    description: Development server
+
+components:
+  schemas:
+    TimeRange:
+      type: object
+      required:
+        - start
+        - end
+      properties:
+        start:
+          type: string
+          description: Date and time in format 'D.M. H:mm'
+          example: '2.1. 8:00'
+          pattern: '^\d{1,2}\.\d{1,2}\.\s\d{1,2}:\d{2}$'
+        end:
+          type: string
+          description: Date and time in format 'D.M. H:mm'
+          example: '5.1. 8:00'
+          pattern: '^\d{1,2}\.\d{1,2}\.\s\d{1,2}:\d{2}$'
+
+    EventUpdateRequest:
+      type: object
+      required:
+        - title
+        - description
+        - location
+        - timeRange
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        location:
+          type: string
+        timeRange:
+          $ref: '#/components/schemas/TimeRange'
+
+    SetTimeRequest:
+      type: object
+      required:
+        - timeRange
+      properties:
+        timeRange:
+          $ref: '#/components/schemas/TimeRange'
+
+    PassageUpdateRequest:
+      type: object
+      required:
+        - title
+        - type
+      properties:
+        title:
+          type: string
+        type:
+          type: string
+          enum: ['screen', 'linear', 'transition']
+
+    SuccessResponse:
+      type: object
+      properties:
+        success: 
+          type: boolean
+        message:
+          type: string
+      required:
+        - success
+
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        error:
+          type: string
+      required:
+        - success
+        - error
+
+  responses:
+    Success:
+      description: Operation successful
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SuccessResponse'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+paths:
+  /event/{eventId}:
+    put:
+      summary: Update event details
+      parameters:
+        - name: eventId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventUpdateRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      summary: Delete an event
+      parameters:
+        - name: eventId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /event/{eventId}/open:
+    post:
+      summary: Open an event in VS Code
+      parameters:
+        - name: eventId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /event/{eventId}/setTime:
+    post:
+      summary: Set event time range
+      parameters:
+        - name: eventId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetTimeRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /passage/{passageId}:
+    put:
+      summary: Update passage details
+      parameters:
+        - name: passageId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PassageUpdateRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      summary: Delete a passage
+      parameters:
+        - name: passageId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /passage/{passageId}/open:
+    post:
+      summary: Open a passage file in VS Code
+      parameters:
+        - name: passageId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '404':
+          $ref: '#/components/responses/NotFound'

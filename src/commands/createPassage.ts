@@ -14,7 +14,7 @@ export const type = 'Passage';
 export enum PassageType {
     Screen = 'Screen',
     Transition = 'Transition',
-    LinearDescriber = 'Linear',
+    Linear = 'Linear',
 };
 
 export const getExportedPassageName = (passageId: string) => {
@@ -125,11 +125,11 @@ export const createPassage = async (context: vscode.ExtensionContext) => {
         case PassageType.Screen:
             newPassageContent = await createScreenPassage(context, selectedEvent, selectedCharacter, passageId);
             break;
-        case PassageType.LinearDescriber:
-            newPassageContent = await createLinearPassage(context, selectedEvent, selectedCharacter, passageId);
+        case PassageType.Linear:
+            newPassageContent = await createLinearPassage(selectedEvent, selectedCharacter, passageId);
             break;
         case PassageType.Transition:
-            newPassageContent = await createTransitionPassage(context, selectedEvent, selectedCharacter, passageId);
+            newPassageContent = await createTransitionPassage(selectedEvent, selectedCharacter, passageId);
             break;
         default:
             return vscode.window.showErrorMessage('Invalid passage type.');
