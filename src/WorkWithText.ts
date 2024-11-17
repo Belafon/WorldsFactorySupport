@@ -284,3 +284,112 @@ export const extendPipelinedType = async (data: string, typeName: string, typeTo
         return match.replace(group1, updatedUnion);
     });
 };
+
+
+
+
+
+
+
+
+// Add these to WorkWithText.ts
+
+/**
+ * Adds or updates an array property in an object
+ */
+export async function addToObjectArrayProperty(
+    objectName: string,
+    propertyName: string,
+    itemToAdd: string,
+    data: string
+): Promise<string> {
+    // Step 1: Match the object name with 'Location' suffix
+    const namePattern = `${objectName}`;
+    
+    // Step 2: Match optional whitespace
+    const whitespace = `\\s*`;
+    
+    // Step 3: Match the type annotation
+    // - Colon followed by optional whitespace
+    // - TLocation with optional whitespace
+    // - Generic parameter with single quotes and object name
+    // - Optional whitespace
+    const typeAnnotation = `:${whitespace}TLocation<${whitespace}'[^']+'${whitespace}>${whitespace}`;
+    
+    // Step 4: Match the equals sign with optional whitespace
+    const assignment = `=${whitespace}`;
+    
+    // Step 5: Match the opening brace
+    const openBrace = `{`;
+    
+    // Step 6: Match all content until closing brace
+    const content = `([^}]*)`;  // Capture group for the content
+    
+    // Step 7: Match the closing brace
+    const closeBrace = `}`;
+    
+    // Combine all parts into final regex
+    const finalPattern = `${namePattern}${whitespace}${typeAnnotation}${assignment}${openBrace}${content}${closeBrace}`;
+    
+    // Create regex with flags
+    const objectRegex = new RegExp(finalPattern, 's');
+    
+    return data.replace(objectRegex, (match, innerContent) => {
+        // Check if property exists
+        if (!match.includes(`${propertyName}:`)) {
+            // Find the position after the opening brace
+            const braceIndex = match.indexOf('{');
+            return match.slice(0, braceIndex + 1) + 
+                   `\n\t${propertyName}: [${itemToAdd}],` + 
+                   match.slice(braceIndex + 1);
+        }
+
+        // Update existing array
+        return match.replace(
+            new RegExp(`${propertyName}:\\s*\\[(.*?)\\]`, 's'),
+            (arrayMatch, contents) => {
+                const trimmedContents = contents.trim();
+                const updatedContents = trimmedContents
+                    ? `${propertyName}: [${trimmedContents}, ${itemToAdd}]`
+                    : `${propertyName}: [${itemToAdd}]`;
+                return updatedContents;
+            }
+        );
+    });
+}
+
+export async function removeFromObjectArrayProperty(
+    objectName: string,
+    propertyName: string,
+    itemToRemove: string,
+    data: string
+): Promise<string> {
+    const namePattern = `${objectName}`;
+    const whitespace = `\\s*`;
+    const typeAnnotation = `:${whitespace}TLocation<${whitespace}'[^']+'${whitespace}>${whitespace}`;
+    const assignment = `=${whitespace}`;
+    const openBrace = `{`;
+    const content = `([^}]*)`;
+    const closeBrace = `}`;
+    
+    const finalPattern = `${namePattern}${whitespace}${typeAnnotation}${assignment}${openBrace}${content}${closeBrace}`;
+    const objectRegex = new RegExp(finalPattern, 's');
+    
+    return data.replace(objectRegex, (match) => {
+        if (!match.includes(`${propertyName}:`)) {
+            return match; // Property doesn't exist, return unchanged
+        }
+
+        return match.replace(
+            new RegExp(`${propertyName}:\\s*\\[(.*?)\\]`, 's'),
+            (arrayMatch, contents) => {
+                const items: string[] = contents.split(',')
+                    .map((item: string) => item.trim())
+                    .filter((item: string) => item !== ''); // Filter out empty items
+                const filteredItems = items
+                    .filter((item: string) => item !== itemToRemove);
+                return `${propertyName}: [${filteredItems.join(', ')}]`;
+            }
+        );
+    });
+}

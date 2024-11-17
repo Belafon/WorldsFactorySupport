@@ -51,3 +51,4 @@ suite('ExtendPipelinedType Test Suite', () => {
         assert.strictEqual(result, expected);
     });
 });
+
