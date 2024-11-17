@@ -5,6 +5,22 @@ interface BuilderOptions<T> {
     onError?: (error: Error) => void;
 }
 
+const DEBUG = {
+    ENABLED: true,
+    log: (component: string, method: string, message: string, data?: any) => {
+        if (DEBUG.ENABLED) {
+            console.log(`[${component}:${method}] ${message}${data ? '\n' + JSON.stringify(data, null, 2) : ''}`);
+        }
+    }
+};
+
+interface BuilderOptions<T> {
+    onFound: (value: T) => void;
+    onNotFound?: (name: string) => void;
+    onError?: (error: Error) => void;
+}
+
+
 interface PropertyBuilderOptions<T> extends BuilderOptions<T> {
     propertyType?: 'string' | 'number' | 'boolean' | 'object' | 'array';
     validation?: (value: T) => boolean;
@@ -69,6 +85,7 @@ const REGEX_PATTERNS = {
 } as const;
 
 // Main TypeScript code builder implementation
+
 export class TypeScriptCodeBuilder implements CodeBuilder {
     private sourceText: string = '';
     private modifications: CodeModification[] = [];
@@ -76,34 +93,46 @@ export class TypeScriptCodeBuilder implements CodeBuilder {
     constructor() {
         this.sourceText = '';
         this.modifications = [];
+        DEBUG.log('TypeScriptCodeBuilder', 'constructor', 'Initialized new builder');
     }
 
     parseText(text: string): void {
+        DEBUG.log('TypeScriptCodeBuilder', 'parseText', 'Parsing new text', {
+            textLength: text.length,
+            firstChars: text.substring(0, 50) + '...'
+        });
         this.sourceText = text;
         this.modifications = [];
     }
 
-    /**
-     * Should find an object by name and call callbacks
-     * the matched object has to be on the first level of the source text,
-     * so the nested should be skipped.
-     * We have to see each parentheses to see the current level and if we can 
-     * to match current object.
-     */
     findObject(name: string, options: BuilderOptions<ObjectBuilder>): void {
+        DEBUG.log('TypeScriptCodeBuilder', 'findObject', `Searching for object "${name}"`);
+        
         try {
             const matches = this.findFirstLevelMatches(name);
+            DEBUG.log('TypeScriptCodeBuilder', 'findObject', `Found ${matches.length} potential matches`, { matches });
 
             if (matches.length === 0) {
+                DEBUG.log('TypeScriptCodeBuilder', 'findObject', `No matches found for "${name}"`);
                 if (options.onNotFound) {
                     options.onNotFound(name);
                 }
                 return;
             }
 
-            // Use the first valid match
             const match = matches[0];
+            DEBUG.log('TypeScriptCodeBuilder', 'findObject', 'Using first match', { 
+                index: match.index,
+                length: match.length,
+                matchedText: this.sourceText.substring(match.index, match.index + match.length)
+            });
+
             const bodyPosition = this.extractObjectBody(match.index);
+            DEBUG.log('TypeScriptCodeBuilder', 'findObject', 'Extracted object body', {
+                start: bodyPosition.start,
+                end: bodyPosition.end,
+                body: this.sourceText.substring(bodyPosition.start, bodyPosition.end)
+            });
 
             const builder = new TypeScriptObjectBuilder(
                 this.sourceText,
@@ -115,6 +144,7 @@ export class TypeScriptCodeBuilder implements CodeBuilder {
             options.onFound(builder);
 
         } catch (error) {
+            DEBUG.log('TypeScriptCodeBuilder', 'findObject', 'Error occurred', { error });
             if (options.onError) {
                 options.onError(error instanceof Error ? error : new Error(String(error)));
             } else {
@@ -123,30 +153,32 @@ export class TypeScriptCodeBuilder implements CodeBuilder {
         }
     }
 
-    /**
-     * Finds all matches for an object name that appear at the first level of nesting
-     */
     private findFirstLevelMatches(name: string): { index: number; length: number }[] {
+        DEBUG.log('TypeScriptCodeBuilder', 'findFirstLevelMatches', `Starting search for "${name}"`);
+        
         const regex = REGEX_PATTERNS.OBJECT_START(name);
         const matches: { index: number; length: number }[] = [];
         let braceLevel = 0;
         let currentPos = 0;
 
         while (currentPos < this.sourceText.length) {
-            // Skip if we're inside a string literal
             if (this.isWithinStringLiteral(currentPos)) {
                 currentPos++;
                 continue;
             }
 
-            // Check for braces first to maintain correct level count
             if (this.sourceText[currentPos] === '{') {
                 braceLevel++;
+                DEBUG.log('TypeScriptCodeBuilder', 'findFirstLevelMatches', `Brace level increased to ${braceLevel}`, {
+                    position: currentPos
+                });
             } else if (this.sourceText[currentPos] === '}') {
                 braceLevel--;
+                DEBUG.log('TypeScriptCodeBuilder', 'findFirstLevelMatches', `Brace level decreased to ${braceLevel}`, {
+                    position: currentPos
+                });
             }
 
-            // Only look for matches at the first level (braceLevel === 0)
             if (braceLevel === 0) {
                 regex.lastIndex = currentPos;
                 const match = regex.exec(this.sourceText);
@@ -155,22 +187,22 @@ export class TypeScriptCodeBuilder implements CodeBuilder {
                     break;
                 }
 
-                // Skip this match if it's within a string literal
+                DEBUG.log('TypeScriptCodeBuilder', 'findFirstLevelMatches', 'Found potential match', {
+                    position: match.index,
+                    text: match[0]
+                });
+
                 if (this.isWithinStringLiteral(match.index)) {
+                    DEBUG.log('TypeScriptCodeBuilder', 'findFirstLevelMatches', 'Match is within string literal, skipping');
                     currentPos = match.index + 1;
                     continue;
                 }
 
-                // Verify this is actually a first-level match by checking
-                // if any nested braces occurred between currentPos and match.index
                 let isValidMatch = true;
                 let tempBraceLevel = 0;
 
                 for (let i = currentPos; i < match.index; i++) {
-                    // Skip checking braces if we're in a string literal
-                    if (this.isWithinStringLiteral(i)) {
-                        continue;
-                    }
+                    if (this.isWithinStringLiteral(i)) continue;
 
                     if (this.sourceText[i] === '{') {
                         tempBraceLevel++;
@@ -185,10 +217,17 @@ export class TypeScriptCodeBuilder implements CodeBuilder {
                 }
 
                 if (isValidMatch) {
+                    DEBUG.log('TypeScriptCodeBuilder', 'findFirstLevelMatches', 'Valid match found', {
+                        index: match.index,
+                        length: match[0].length,
+                        text: match[0]
+                    });
                     matches.push({
                         index: match.index,
                         length: match[0].length
                     });
+                } else {
+                    DEBUG.log('TypeScriptCodeBuilder', 'findFirstLevelMatches', 'Invalid match - nested object');
                 }
 
                 currentPos = match.index + 1;
@@ -197,6 +236,7 @@ export class TypeScriptCodeBuilder implements CodeBuilder {
             }
         }
 
+        DEBUG.log('TypeScriptCodeBuilder', 'findFirstLevelMatches', `Search complete. Found ${matches.length} matches`, { matches });
         return matches;
     }
 
@@ -209,7 +249,6 @@ export class TypeScriptCodeBuilder implements CodeBuilder {
             const char = this.sourceText[i];
             const prevChar = i > 0 ? this.sourceText[i - 1] : '';
 
-            // Skip escaped quotes
             if (prevChar === '\\') {
                 i++;
                 continue;
@@ -224,36 +263,45 @@ export class TypeScriptCodeBuilder implements CodeBuilder {
             i++;
         }
 
+        if (inSingleQuote || inDoubleQuote) {
+            DEBUG.log('TypeScriptCodeBuilder', 'isWithinStringLiteral', `Position ${position} is within string literal`);
+        }
         return inSingleQuote || inDoubleQuote;
     }
 
     private extractObjectBody(startPos: number): BodyRange {
+        DEBUG.log('TypeScriptCodeBuilder', 'extractObjectBody', `Starting extraction from position ${startPos}`);
+        
         let braceCount = 0;
         let currentPos = startPos;
         let bodyStart = -1;
 
-        // First, find the opening brace
         while (currentPos < this.sourceText.length && this.sourceText[currentPos] !== '{') {
             currentPos++;
         }
 
-        // Now track braces
+        DEBUG.log('TypeScriptCodeBuilder', 'extractObjectBody', `Found opening brace at ${currentPos}`);
+
         while (currentPos < this.sourceText.length) {
             const char = this.sourceText[currentPos];
 
             if (char === '{') {
                 braceCount++;
-                // Mark the start position after we've found the opening brace
                 if (braceCount === 1) {
                     bodyStart = currentPos + 1;
+                    DEBUG.log('TypeScriptCodeBuilder', 'extractObjectBody', `Body starts at ${bodyStart}`);
                     currentPos++;
                     continue;
                 }
             }
             if (char === '}') {
                 braceCount--;
-                // Found the closing brace
                 if (braceCount === 0) {
+                    DEBUG.log('TypeScriptCodeBuilder', 'extractObjectBody', 'Body extraction complete', {
+                        start: bodyStart,
+                        end: currentPos,
+                        body: this.sourceText.substring(bodyStart, currentPos)
+                    });
                     return {
                         start: bodyStart,
                         end: currentPos
@@ -264,21 +312,36 @@ export class TypeScriptCodeBuilder implements CodeBuilder {
             currentPos++;
         }
 
+        DEBUG.log('TypeScriptCodeBuilder', 'extractObjectBody', 'Error: Missing closing brace');
         throw new Error('Invalid object structure: missing closing brace');
     }
 
     toString(): string {
-        // Sort modifications in reverse order to apply from end to start
+        DEBUG.log('TypeScriptCodeBuilder', 'toString', `Applying ${this.modifications.length} modifications`);
+        
         const sortedMods = [...this.modifications].sort((a, b) => b.start - a.start);
-
+        
         let result = this.sourceText;
         for (const mod of sortedMods) {
+            DEBUG.log('TypeScriptCodeBuilder', 'toString', 'Applying modification', {
+                start: mod.start,
+                end: mod.end,
+                replacement: mod.replacement
+            });
             result = result.slice(0, mod.start) + mod.replacement + result.slice(mod.end);
         }
 
         return result;
     }
 }
+
+
+
+
+
+
+
+
 
 
 export class TypeScriptObjectBuilder implements ObjectBuilder {
@@ -782,6 +845,46 @@ export class TypeScriptObjectBuilder implements ObjectBuilder {
         throw new Error('Invalid object structure: missing closing brace');
     }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
