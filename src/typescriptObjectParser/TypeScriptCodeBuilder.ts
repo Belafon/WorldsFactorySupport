@@ -549,24 +549,33 @@ export class TypeScriptObjectBuilder implements ObjectBuilder {
         return matches;
     }
 
+
     private isWithinStringLiteral(position: number): boolean {
         let inString = false;
         let prevChar = '';
         let i = this.startPosition;
     
+        let debugText = '';
+        console.log(`\nChecking if position ${position} is within string`);
+    
         while (i < position) {
             const char = this.sourceText[i];
+            debugText += char;
             
             if ((char === '"' || char === "'") && prevChar !== '\\') {
                 inString = !inString;
+                console.log(`${i}: ${char} - String context changed to: ${inString}`);
             }
             
             prevChar = char;
             i++;
         }
     
+        console.log(`Text processed: ${debugText}`);
+        console.log(`Final string state: ${inString}`);
         return inString;
     }
+    
 
 
  
