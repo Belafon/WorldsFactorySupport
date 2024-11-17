@@ -345,8 +345,10 @@ export class TypeScriptObjectBuilder implements ObjectBuilder {
             }
         }
     }
-    
     private findFirstLevelProperties(name: string): { index: number; valueStart: number; valueEnd: number }[] {
+        console.log(`\nSearching for property "${name}" in text:\n${this.sourceText}`);
+        console.log(`Search boundaries: start=${this.startPosition}, end=${this.endPosition}`);
+    
         const regex = REGEX_PATTERNS.PROPERTY(name);
         const matches: { index: number; valueStart: number; valueEnd: number }[] = [];
         let currentPos = this.startPosition;
@@ -356,25 +358,33 @@ export class TypeScriptObjectBuilder implements ObjectBuilder {
             let inString = false;
             let prevChar = '';
     
+            console.log(`\nChecking position ${pos} for valid nesting level`);
+            let debugText = '';
+    
             // Start from the beginning of our object scope
             for (let i = this.startPosition; i < pos; i++) {
                 const char = this.sourceText[i];
+                debugText += char;
     
                 // Handle string context
                 if ((char === '"' || char === "'") && prevChar !== '\\') {
                     inString = !inString;
+                    console.log(`${i}: ${char} - String context changed to: ${inString}`);
                 } else if (!inString) {
                     // Count braces only when not in string
                     if (char === '{') {
                         braceCount++;
+                        console.log(`${i}: { - Brace level increased to: ${braceCount}`);
                     } else if (char === '}') {
                         braceCount--;
+                        console.log(`${i}: } - Brace level decreased to: ${braceCount}`);
                     }
                 }
                 prevChar = char;
             }
     
-            // Should be exactly at level 1 (inside the current object)
+            console.log(`Text processed before position: ${debugText}`);
+            console.log(`Final brace count: ${braceCount}, Expected: 1`);
             return braceCount === 1;
         };
         
@@ -385,38 +395,59 @@ export class TypeScriptObjectBuilder implements ObjectBuilder {
             const match = regex.exec(searchText);
             
             if (!match) {
+                console.log('No more matches found');
                 break;
             }
     
             const absoluteIndex = currentPos + match.index;
+            console.log(`\nFound potential match at position ${absoluteIndex}`);
+            console.log(`Matched text: "${match[0]}"`);
     
             // Skip if match is within a string literal
             if (this.isWithinStringLiteral(absoluteIndex)) {
+                console.log('Match is within string literal - skipping');
                 currentPos = absoluteIndex + 1;
                 continue;
             }
     
             // Check if this property is at the correct nesting level
             if (isValidPropertyPosition(absoluteIndex)) {
+                console.log('Match is at valid nesting level');
+                
                 // Verify the match isn't part of a longer property name
                 const beforeChar = absoluteIndex > 0 ? this.sourceText[absoluteIndex - 1] : '';
                 const isValidStart = /^[,{\s]$/.test(beforeChar) || absoluteIndex === 0;
     
                 if (isValidStart) {
+                    console.log('Match has valid start character');
                     // Extract the value positions
                     const valueStart = absoluteIndex + match[0].length - match[1].length;
                     const valueEnd = valueStart + match[1].length;
+    
+                    console.log(`Value boundaries: start=${valueStart}, end=${valueEnd}`);
+                    console.log(`Value text: "${this.sourceText.slice(valueStart, valueEnd)}"`);
     
                     matches.push({
                         index: absoluteIndex,
                         valueStart,
                         valueEnd
                     });
+                } else {
+                    console.log(`Invalid start character: "${beforeChar}"`);
                 }
+            } else {
+                console.log('Match is at wrong nesting level - skipping');
             }
     
             currentPos = absoluteIndex + 1;
         }
+    
+        console.log(`\nTotal matches found: ${matches.length}`);
+        matches.forEach((match, i) => {
+            console.log(`Match ${i + 1}:`);
+            console.log(`  Position: ${match.index}`);
+            console.log(`  Value: "${this.sourceText.slice(match.valueStart, match.valueEnd)}"`);
+        });
     
         return matches;
     }
