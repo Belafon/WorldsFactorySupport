@@ -353,9 +353,9 @@ export class TypeScriptObjectBuilder implements ObjectBuilder {
         console.log(`\nSearching for property "${name}" in text:\n${this.sourceText}`);
         console.log(`Search boundaries: start=${this.startPosition}, end=${this.endPosition}`);
     
-        const regex = REGEX_PATTERNS.PROPERTY(name);
+        // Create regex that matches the property anywhere in text
+        const regex = new RegExp(`${name}\\s*:\\s*([^,}\\n]+)`, 'g');
         const matches: { index: number; valueStart: number; valueEnd: number }[] = [];
-        let currentPos = this.startPosition;
         
         const isValidPropertyPosition = (pos: number): boolean => {
             let braceCount = 0;
@@ -391,26 +391,24 @@ export class TypeScriptObjectBuilder implements ObjectBuilder {
             console.log(`Final brace count: ${braceCount}, Expected: 1`);
             return braceCount === 1;
         };
-        
-        while (currentPos < this.endPosition) {
-            // Try to find the next property match
-            regex.lastIndex = currentPos;
-            const searchText = this.sourceText.slice(currentPos, this.endPosition);
-            const match = regex.exec(searchText);
+    
+        // Find all matches in the text
+        let match;
+        while ((match = regex.exec(this.sourceText)) !== null) {
+            const absoluteIndex = match.index;
             
-            if (!match) {
-                console.log('No more matches found');
-                break;
+            // Skip if outside our boundaries
+            if (absoluteIndex < this.startPosition || absoluteIndex >= this.endPosition) {
+                console.log(`Match at ${absoluteIndex} is outside boundaries - skipping`);
+                continue;
             }
     
-            const absoluteIndex = currentPos + match.index;
             console.log(`\nFound potential match at position ${absoluteIndex}`);
             console.log(`Matched text: "${match[0]}"`);
     
             // Skip if match is within a string literal
             if (this.isWithinStringLiteral(absoluteIndex)) {
                 console.log('Match is within string literal - skipping');
-                currentPos = absoluteIndex + 1;
                 continue;
             }
     
@@ -442,8 +440,6 @@ export class TypeScriptObjectBuilder implements ObjectBuilder {
             } else {
                 console.log('Match is at wrong nesting level - skipping');
             }
-    
-            currentPos = absoluteIndex + 1;
         }
     
         console.log(`\nTotal matches found: ${matches.length}`);
