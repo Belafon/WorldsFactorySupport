@@ -289,10 +289,12 @@ export class TypeScriptObjectBuilder implements ObjectBuilder {
     ) { }
 
     findProperty(name: string, options: PropertyBuilderOptions<any>): void {
+        console.log(`\n=== Finding property "${name}" ===`);
         try {
             const matches = this.findFirstLevelProperties(name);
     
             if (matches.length === 0) {
+                console.log('No matches found, calling onNotFound');
                 if (options.onNotFound) {
                     options.onNotFound(name);
                 }
@@ -302,9 +304,11 @@ export class TypeScriptObjectBuilder implements ObjectBuilder {
             // Use the first valid match
             const match = matches[0];
             const value = this.sourceText.slice(match.valueStart, match.valueEnd).trim();
+            console.log(`Found value: "${value}"`);
             options.onFound(value);
     
         } catch (error) {
+            console.log('Error occurred:', error);
             if (options.onError) {
                 options.onError(error instanceof Error ? error : new Error(String(error)));
             } else {
