@@ -289,12 +289,10 @@ export class TypeScriptObjectBuilder implements ObjectBuilder {
     ) { }
 
     findProperty(name: string, options: PropertyBuilderOptions<any>): void {
-        console.log(`\n=== Finding property "${name}" ===`);
         try {
             const matches = this.findFirstLevelProperties(name);
     
             if (matches.length === 0) {
-                console.log('No matches found, calling onNotFound');
                 if (options.onNotFound) {
                     options.onNotFound(name);
                 }
@@ -304,11 +302,9 @@ export class TypeScriptObjectBuilder implements ObjectBuilder {
             // Use the first valid match
             const match = matches[0];
             const value = this.sourceText.slice(match.valueStart, match.valueEnd).trim();
-            console.log(`Found value: "${value}"`);
             options.onFound(value);
     
         } catch (error) {
-            console.log('Error occurred:', error);
             if (options.onError) {
                 options.onError(error instanceof Error ? error : new Error(String(error)));
             } else {
@@ -350,8 +346,6 @@ export class TypeScriptObjectBuilder implements ObjectBuilder {
         }
     }
     private findFirstLevelProperties(name: string): { index: number; valueStart: number; valueEnd: number }[] {
-        console.log(`\nSearching for property "${name}" in text:\n${this.sourceText}`);
-        console.log(`Search boundaries: start=${this.startPosition}, end=${this.endPosition}`);
     
         // Create regex that matches the property anywhere in text
         const regex = new RegExp(`${name}\\s*:\\s*([^,}\\n]+)`, 'g');
@@ -362,7 +356,6 @@ export class TypeScriptObjectBuilder implements ObjectBuilder {
             let inString = false;
             let prevChar = '';
     
-            console.log(`\nChecking position ${pos} for valid nesting level`);
             let debugText = '';
     
             // Start from the beginning of our object scope
@@ -373,22 +366,17 @@ export class TypeScriptObjectBuilder implements ObjectBuilder {
                 // Handle string context
                 if ((char === '"' || char === "'") && prevChar !== '\\') {
                     inString = !inString;
-                    console.log(`${i}: ${char} - String context changed to: ${inString}`);
                 } else if (!inString) {
                     // Count braces only when not in string
                     if (char === '{') {
                         braceCount++;
-                        console.log(`${i}: { - Brace level increased to: ${braceCount}`);
                     } else if (char === '}') {
                         braceCount--;
-                        console.log(`${i}: } - Brace level decreased to: ${braceCount}`);
                     }
                 }
                 prevChar = char;
             }
     
-            console.log(`Text processed before position: ${debugText}`);
-            console.log(`Final brace count: ${braceCount}, Expected: 1`);
             return braceCount === 1;
         };
     
@@ -399,55 +387,35 @@ export class TypeScriptObjectBuilder implements ObjectBuilder {
             
             // Skip if outside our boundaries
             if (absoluteIndex < this.startPosition || absoluteIndex >= this.endPosition) {
-                console.log(`Match at ${absoluteIndex} is outside boundaries - skipping`);
                 continue;
             }
     
-            console.log(`\nFound potential match at position ${absoluteIndex}`);
-            console.log(`Matched text: "${match[0]}"`);
     
             // Skip if match is within a string literal
             if (this.isWithinStringLiteral(absoluteIndex)) {
-                console.log('Match is within string literal - skipping');
                 continue;
             }
     
             // Check if this property is at the correct nesting level
             if (isValidPropertyPosition(absoluteIndex)) {
-                console.log('Match is at valid nesting level');
                 
                 // Verify the match isn't part of a longer property name
                 const beforeChar = absoluteIndex > 0 ? this.sourceText[absoluteIndex - 1] : '';
                 const isValidStart = /^[,{\s]$/.test(beforeChar) || absoluteIndex === 0;
     
                 if (isValidStart) {
-                    console.log('Match has valid start character');
                     // Extract the value positions
                     const valueStart = absoluteIndex + match[0].length - match[1].length;
                     const valueEnd = valueStart + match[1].length;
-    
-                    console.log(`Value boundaries: start=${valueStart}, end=${valueEnd}`);
-                    console.log(`Value text: "${this.sourceText.slice(valueStart, valueEnd)}"`);
     
                     matches.push({
                         index: absoluteIndex,
                         valueStart,
                         valueEnd
                     });
-                } else {
-                    console.log(`Invalid start character: "${beforeChar}"`);
                 }
-            } else {
-                console.log('Match is at wrong nesting level - skipping');
             }
         }
-    
-        console.log(`\nTotal matches found: ${matches.length}`);
-        matches.forEach((match, i) => {
-            console.log(`Match ${i + 1}:`);
-            console.log(`  Position: ${match.index}`);
-            console.log(`  Value: "${this.sourceText.slice(match.valueStart, match.valueEnd)}"`);
-        });
     
         return matches;
     }
@@ -556,7 +524,6 @@ export class TypeScriptObjectBuilder implements ObjectBuilder {
         let i = this.startPosition;
     
         let debugText = '';
-        console.log(`\nChecking if position ${position} is within string`);
     
         while (i < position) {
             const char = this.sourceText[i];
@@ -564,15 +531,12 @@ export class TypeScriptObjectBuilder implements ObjectBuilder {
             
             if ((char === '"' || char === "'") && prevChar !== '\\') {
                 inString = !inString;
-                console.log(`${i}: ${char} - String context changed to: ${inString}`);
             }
             
             prevChar = char;
             i++;
         }
     
-        console.log(`Text processed: ${debugText}`);
-        console.log(`Final string state: ${inString}`);
         return inString;
     }
     
