@@ -1,9 +1,11 @@
-// Core interfaces for the builder pattern
-interface BuilderOptions<T> {
-    onFound: (value: T) => void;
-    onNotFound?: (name: string) => void;
-    onError?: (error: Error) => void;
-}
+import * as tsNode from 'ts-node';
+import * as prettier from 'prettier/standalone';
+import * as standalone from 'prettier/standalone';
+import * as prettierPluginBabel from 'prettier/plugins/babel';
+import * as prettierPluginEstree from 'prettier/plugins/estree';
+import * as prettierPluginTypescript from 'prettier/plugins/typescript';
+
+import * as vscode from 'vscode';
 
 const DEBUG = {
     ENABLED: true,
@@ -20,97 +22,73 @@ interface BuilderOptions<T> {
     onError?: (error: Error) => void;
 }
 
+// Make ArrayBuilderOptions independent of BuilderOptions
+interface ArrayBuilderOptions {
+    onFound?: (builder: ArrayBuilder) => void;
+    onNotFound?: (name: string) => void;
+    onError?: (error: Error) => void;
+    itemType?: 'string' | 'number' | 'boolean' | 'object';
+    validation?: (items: any[]) => boolean;
+}
 
 interface PropertyBuilderOptions<T> extends BuilderOptions<T> {
     propertyType?: 'string' | 'number' | 'boolean' | 'object' | 'array';
     validation?: (value: T) => boolean;
 }
 
-interface ArrayBuilderOptions<T> extends BuilderOptions<T[]> {
-    itemType?: 'string' | 'number' | 'boolean' | 'object';
-    validation?: (items: T[]) => boolean;
-}
-
-interface CodeBuilder {
+export interface CodeBuilder {
     findObject(name: string, options: BuilderOptions<ObjectBuilder>): void;
     parseText(text: string): void;
-    toString(): string;
+    toString(): Promise<string>;
 }
 
-interface ObjectBuilder {
+export interface ArrayBuilder {
+    addNewObject(callback: (builder: ObjectBuilder) => void): void;
+    addItem(value: string): void;
+    getItems(): ObjectBuilder[];
+}
+
+export interface ObjectBuilder {
     findObject(name: string, options: BuilderOptions<ObjectBuilder>): void;
     findProperty(name: string, options: PropertyBuilderOptions<any>): void;
-    findArray(name: string, options: ArrayBuilderOptions<any>): void;
+    findArray(name: string, options: ArrayBuilderOptions): void;
     setPropertyValue(name: string, value: string): void;
     addProperty(name: string, value: string): void;
     addArray(name: string, callback: (builder: ArrayBuilder) => void): void;
 }
-
-interface ArrayBuilder {
-    addNewObject(callback: (builder: ObjectBuilder) => void): void;
-    getItems(): ObjectBuilder[];
-}
-
 type BodyRange = {
     start: number;
     end: number;
 }
 
-// Helper types for managing code modifications
 export type CodeModification = {
     start: number;
     end: number;
     replacement: string;
 };
 
-// Regex patterns for parsing TypeScript code
-const REGEX_PATTERNS = {
-    OBJECT_START: (name: string) => new RegExp(
-        // Match either property definition or variable declaration
-        `(?:${name}\\s*:\\s*{|(?:export\\s+)?(?:const\\s+)?${name}\\s*=\\s*{)`,
-        'g'
-    ),
-    ARRAY_START: (name: string) => new RegExp(
-        // Match either property definition or variable declaration for arrays
-        `(?:${name}\\s*:\\s*\\[|(?:export\\s+)?(?:const\\s+)?${name}\\s*=\\s*\\[)`,
-        'g'
-    ),
-    PROPERTY: (name: string) => new RegExp(
-        `${name}\\s*:\\s*([^,}\\n]+)`,
-        'g'
-    ),
-    INDENTATION: /^[\s\t]*/,
-    CLOSING_BRACE: /}/,
-    CLOSING_BRACKET: /]/,
-} as const;
-
-// Main TypeScript code builder implementation
-
 export class TypeScriptCodeBuilder implements CodeBuilder {
     private sourceText: string = '';
     private modifications: CodeModification[] = [];
 
     constructor() {
-        this.sourceText = '';
-        this.modifications = [];
         DEBUG.log('TypeScriptCodeBuilder', 'constructor', 'Initialized new builder');
     }
 
     parseText(text: string): void {
         DEBUG.log('TypeScriptCodeBuilder', 'parseText', 'Parsing new text', {
             textLength: text.length,
-            firstChars: text.substring(0, 50) + '...'
+            textPreview: text.substring(0, 100)
         });
         this.sourceText = text;
         this.modifications = [];
     }
 
     findObject(name: string, options: BuilderOptions<ObjectBuilder>): void {
-        DEBUG.log('TypeScriptCodeBuilder', 'findObject', `Searching for object "${name}"`);
-        
+        DEBUG.log('TypeScriptCodeBuilder', 'findObject', `Starting search for object "${name}"`);
+
         try {
-            const matches = this.findFirstLevelMatches(name);
-            DEBUG.log('TypeScriptCodeBuilder', 'findObject', `Found ${matches.length} potential matches`, { matches });
+            const matches = this.scanForObjects(name);
 
             if (matches.length === 0) {
                 DEBUG.log('TypeScriptCodeBuilder', 'findObject', `No matches found for "${name}"`);
@@ -121,16 +99,12 @@ export class TypeScriptCodeBuilder implements CodeBuilder {
             }
 
             const match = matches[0];
-            DEBUG.log('TypeScriptCodeBuilder', 'findObject', 'Using first match', { 
-                index: match.index,
-                length: match.length,
-                matchedText: this.sourceText.substring(match.index, match.index + match.length)
+            DEBUG.log('TypeScriptCodeBuilder', 'findObject', `Found match at index ${match.start}`, {
+                matchText: this.sourceText.substring(match.start, match.end)
             });
 
-            const bodyPosition = this.extractObjectBody(match.index);
-            DEBUG.log('TypeScriptCodeBuilder', 'findObject', 'Extracted object body', {
-                start: bodyPosition.start,
-                end: bodyPosition.end,
+            const bodyPosition = this.extractObjectBody(match.start);
+            DEBUG.log('TypeScriptCodeBuilder', 'findObject', 'Object body extracted', {
                 body: this.sourceText.substring(bodyPosition.start, bodyPosition.end)
             });
 
@@ -144,7 +118,7 @@ export class TypeScriptCodeBuilder implements CodeBuilder {
             options.onFound(builder);
 
         } catch (error) {
-            DEBUG.log('TypeScriptCodeBuilder', 'findObject', 'Error occurred', { error });
+            DEBUG.log('TypeScriptCodeBuilder', 'findObject', 'Error processing object', { error });
             if (options.onError) {
                 options.onError(error instanceof Error ? error : new Error(String(error)));
             } else {
@@ -153,175 +127,205 @@ export class TypeScriptCodeBuilder implements CodeBuilder {
         }
     }
 
-    private findFirstLevelMatches(name: string): { index: number; length: number }[] {
-        DEBUG.log('TypeScriptCodeBuilder', 'findFirstLevelMatches', `Starting search for "${name}"`);
-        
-        const regex = REGEX_PATTERNS.OBJECT_START(name);
-        const matches: { index: number; length: number }[] = [];
-        let braceLevel = 0;
+    private scanForObjects(name: string): { start: number; end: number }[] {
+        DEBUG.log('TypeScriptCodeBuilder', 'scanForObjects', `Starting scan for object "${name}"`);
+
+        const matches: { start: number; end: number }[] = [];
         let currentPos = 0;
+        let braceLevel = 0;
+        let inString = false;
+        let prevChar = '';
 
-        while (currentPos < this.sourceText.length) {
-            if (this.isWithinStringLiteral(currentPos)) {
-                currentPos++;
-                continue;
-            }
-
-            if (this.sourceText[currentPos] === '{') {
-                braceLevel++;
-                DEBUG.log('TypeScriptCodeBuilder', 'findFirstLevelMatches', `Brace level increased to ${braceLevel}`, {
-                    position: currentPos
-                });
-            } else if (this.sourceText[currentPos] === '}') {
-                braceLevel--;
-                DEBUG.log('TypeScriptCodeBuilder', 'findFirstLevelMatches', `Brace level decreased to ${braceLevel}`, {
-                    position: currentPos
-                });
-            }
-
-            if (braceLevel === 0) {
-                regex.lastIndex = currentPos;
-                const match = regex.exec(this.sourceText);
-
-                if (!match) {
-                    break;
-                }
-
-                DEBUG.log('TypeScriptCodeBuilder', 'findFirstLevelMatches', 'Found potential match', {
-                    position: match.index,
-                    text: match[0]
-                });
-
-                if (this.isWithinStringLiteral(match.index)) {
-                    DEBUG.log('TypeScriptCodeBuilder', 'findFirstLevelMatches', 'Match is within string literal, skipping');
-                    currentPos = match.index + 1;
-                    continue;
-                }
-
-                let isValidMatch = true;
-                let tempBraceLevel = 0;
-
-                for (let i = currentPos; i < match.index; i++) {
-                    if (this.isWithinStringLiteral(i)) continue;
-
-                    if (this.sourceText[i] === '{') {
-                        tempBraceLevel++;
-                    } else if (this.sourceText[i] === '}') {
-                        tempBraceLevel--;
-                    }
-
-                    if (tempBraceLevel > 0) {
-                        isValidMatch = false;
-                        break;
-                    }
-                }
-
-                if (isValidMatch) {
-                    DEBUG.log('TypeScriptCodeBuilder', 'findFirstLevelMatches', 'Valid match found', {
-                        index: match.index,
-                        length: match[0].length,
-                        text: match[0]
-                    });
-                    matches.push({
-                        index: match.index,
-                        length: match[0].length
-                    });
-                } else {
-                    DEBUG.log('TypeScriptCodeBuilder', 'findFirstLevelMatches', 'Invalid match - nested object');
-                }
-
-                currentPos = match.index + 1;
-            } else {
-                currentPos++;
-            }
-        }
-
-        DEBUG.log('TypeScriptCodeBuilder', 'findFirstLevelMatches', `Search complete. Found ${matches.length} matches`, { matches });
-        return matches;
-    }
-
-    private isWithinStringLiteral(position: number): boolean {
-        let inSingleQuote = false;
-        let inDoubleQuote = false;
-        let i = 0;
-
-        while (i < position) {
-            const char = this.sourceText[i];
-            const prevChar = i > 0 ? this.sourceText[i - 1] : '';
-
-            if (prevChar === '\\') {
-                i++;
-                continue;
-            }
-
-            if (char === "'") {
-                inSingleQuote = !inSingleQuote;
-            } else if (char === '"') {
-                inDoubleQuote = !inDoubleQuote;
-            }
-
-            i++;
-        }
-
-        if (inSingleQuote || inDoubleQuote) {
-            DEBUG.log('TypeScriptCodeBuilder', 'isWithinStringLiteral', `Position ${position} is within string literal`);
-        }
-        return inSingleQuote || inDoubleQuote;
-    }
-
-    private extractObjectBody(startPos: number): BodyRange {
-        DEBUG.log('TypeScriptCodeBuilder', 'extractObjectBody', `Starting extraction from position ${startPos}`);
-        
-        let braceCount = 0;
-        let currentPos = startPos;
-        let bodyStart = -1;
-
-        while (currentPos < this.sourceText.length && this.sourceText[currentPos] !== '{') {
-            currentPos++;
-        }
-
-        DEBUG.log('TypeScriptCodeBuilder', 'extractObjectBody', `Found opening brace at ${currentPos}`);
+        const isIdentifierChar = (char: string) => /[a-zA-Z0-9_$]/.test(char);
 
         while (currentPos < this.sourceText.length) {
             const char = this.sourceText[currentPos];
 
-            if (char === '{') {
-                braceCount++;
-                if (braceCount === 1) {
-                    bodyStart = currentPos + 1;
-                    DEBUG.log('TypeScriptCodeBuilder', 'extractObjectBody', `Body starts at ${bodyStart}`);
-                    currentPos++;
-                    continue;
-                }
+            // Handle string literals
+            if ((char === '"' || char === "'") && prevChar !== '\\') {
+                inString = !inString;
+                DEBUG.log('TypeScriptCodeBuilder', 'scanForObjects',
+                    `String literal ${inString ? 'started' : 'ended'} at pos ${currentPos}`);
+                currentPos++;
+                prevChar = char;
+                continue;
             }
-            if (char === '}') {
-                braceCount--;
-                if (braceCount === 0) {
-                    DEBUG.log('TypeScriptCodeBuilder', 'extractObjectBody', 'Body extraction complete', {
-                        start: bodyStart,
-                        end: currentPos,
-                        body: this.sourceText.substring(bodyStart, currentPos)
-                    });
-                    return {
-                        start: bodyStart,
-                        end: currentPos
-                    };
+
+            if (inString) {
+                currentPos++;
+                prevChar = char;
+                continue;
+            }
+
+            // Track brace level
+            if (char === '{') {
+                braceLevel++;
+                DEBUG.log('TypeScriptCodeBuilder', 'scanForObjects',
+                    `Brace level increased to ${braceLevel} at pos ${currentPos}`);
+            } else if (char === '}') {
+                braceLevel--;
+                DEBUG.log('TypeScriptCodeBuilder', 'scanForObjects',
+                    `Brace level decreased to ${braceLevel} at pos ${currentPos}`);
+            }
+
+            // Only look for objects at the current level
+            if (braceLevel === 0) {
+                // Check if we're at the start of our target identifier
+                if (isIdentifierChar(char)) {
+                    const identifierStart = currentPos;
+                    let identifierEnd = currentPos;
+
+                    // Read the full identifier
+                    while (identifierEnd < this.sourceText.length &&
+                        isIdentifierChar(this.sourceText[identifierEnd])) {
+                        identifierEnd++;
+                    }
+
+                    const foundIdentifier = this.sourceText.slice(identifierStart, identifierEnd);
+
+                    if (foundIdentifier === name) {
+                        DEBUG.log('TypeScriptCodeBuilder', 'scanForObjects',
+                            `Found potential identifier match at pos ${identifierStart}`, {
+                            identifier: foundIdentifier
+                        });
+
+                        // Skip whitespace after identifier
+                        let pos = identifierEnd;
+                        while (pos < this.sourceText.length && /\s/.test(this.sourceText[pos])) {
+                            pos++;
+                        }
+
+                        // Handle type annotation if present
+                        if (this.sourceText[pos] === ':') {
+                            pos++; // Skip the :
+                            // Skip whitespace after :
+                            while (pos < this.sourceText.length && /\s/.test(this.sourceText[pos])) {
+                                pos++;
+                            }
+
+                            // Skip the type definition including generics
+                            let genericLevel = 0;
+                            while (pos < this.sourceText.length) {
+                                if (this.sourceText[pos] === '<') {
+                                    genericLevel++;
+                                } else if (this.sourceText[pos] === '>') {
+                                    genericLevel--;
+                                } else if (this.sourceText[pos] === '=' && genericLevel === 0) {
+                                    break;
+                                }
+                                pos++;
+                            }
+                        }
+
+                        // Check for equals sign
+                        while (pos < this.sourceText.length && /\s/.test(this.sourceText[pos])) {
+                            pos++;
+                        }
+
+                        if (this.sourceText[pos] === '=') {
+                            pos++; // Skip the =
+                            // Skip whitespace after =
+                            while (pos < this.sourceText.length && /\s/.test(this.sourceText[pos])) {
+                                pos++;
+                            }
+
+                            if (this.sourceText[pos] === '{') {
+                                DEBUG.log('TypeScriptCodeBuilder', 'scanForObjects',
+                                    `Valid object declaration found at pos ${identifierStart}`);
+                                matches.push({
+                                    start: identifierStart,
+                                    end: pos
+                                });
+                            }
+                        }
+                    }
                 }
             }
 
             currentPos++;
+            prevChar = char;
+        }
+
+        DEBUG.log('TypeScriptCodeBuilder', 'scanForObjects',
+            `Scan complete - found ${matches.length} matches`, { matches });
+        return matches;
+    }
+
+
+    private extractObjectBody(startPos: number): BodyRange {
+        DEBUG.log('TypeScriptCodeBuilder', 'extractObjectBody',
+            `Starting body extraction from pos ${startPos}`);
+
+        // Move to opening brace
+        let currentPos = startPos;
+        while (currentPos < this.sourceText.length && this.sourceText[currentPos] !== '{') {
+            currentPos++;
+        }
+
+        DEBUG.log('TypeScriptCodeBuilder', 'extractObjectBody',
+            `Found opening brace at pos ${currentPos}`);
+
+        let braceCount = 0;
+        let bodyStart = -1;
+        let inString = false;
+        let prevChar = '';
+
+        while (currentPos < this.sourceText.length) {
+            const char = this.sourceText[currentPos];
+
+            // Handle string literals
+            if ((char === '"' || char === "'") && prevChar !== '\\') {
+                inString = !inString;
+            }
+
+            if (!inString) {
+                if (char === '{') {
+                    braceCount++;
+                    DEBUG.log('TypeScriptCodeBuilder', 'extractObjectBody',
+                        `Opening brace found at pos ${currentPos}, count: ${braceCount}`);
+                    if (braceCount === 1) {
+                        bodyStart = currentPos + 1;
+                        DEBUG.log('TypeScriptCodeBuilder', 'extractObjectBody',
+                            `Body starts at pos ${bodyStart}`);
+                        currentPos++;
+                        prevChar = char;
+                        continue;
+                    }
+                } else if (char === '}') {
+                    braceCount--;
+                    DEBUG.log('TypeScriptCodeBuilder', 'extractObjectBody',
+                        `Closing brace found at pos ${currentPos}, count: ${braceCount}`);
+                    if (braceCount === 0) {
+                        const body = this.sourceText.substring(bodyStart, currentPos);
+                        DEBUG.log('TypeScriptCodeBuilder', 'extractObjectBody',
+                            'Body extraction complete', {
+                            body,
+                            start: bodyStart,
+                            end: currentPos
+                        });
+                        return {
+                            start: bodyStart,
+                            end: currentPos
+                        };
+                    }
+                }
+            }
+
+            currentPos++;
+            prevChar = char;
         }
 
         DEBUG.log('TypeScriptCodeBuilder', 'extractObjectBody', 'Error: Missing closing brace');
         throw new Error('Invalid object structure: missing closing brace');
     }
 
-    toString(): string {
-        DEBUG.log('TypeScriptCodeBuilder', 'toString', `Applying ${this.modifications.length} modifications`);
-        
+    async toString(): Promise<string> {
+        DEBUG.log('TypeScriptCodeBuilder', 'toString',
+            `Converting to string with ${this.modifications.length} modifications`);
+
         const sortedMods = [...this.modifications].sort((a, b) => b.start - a.start);
-        
         let result = this.sourceText;
+
         for (const mod of sortedMods) {
             DEBUG.log('TypeScriptCodeBuilder', 'toString', 'Applying modification', {
                 start: mod.start,
@@ -331,77 +335,440 @@ export class TypeScriptCodeBuilder implements CodeBuilder {
             result = result.slice(0, mod.start) + mod.replacement + result.slice(mod.end);
         }
 
-        return result;
+        // Format with prettier
+        const formatted = await this.formatCode(result);
+
+        // Ensure consistent newline at end
+        return formatted.endsWith('\n') ? formatted : formatted + '\n';
     }
+
+
+    private async formatCode(code: string): Promise<string> {
+        DEBUG.log('TypeScriptCodeBuilder', 'formatCode', 'Formatting code with Prettier');
+        try {
+            const formattedCode = await standalone.format(code, {
+                parser: 'typescript',
+                plugins: [
+                    prettierPluginBabel,
+                    prettierPluginEstree,
+                    prettierPluginTypescript
+                ],
+                semi: true,
+                singleQuote: true,
+                tabWidth: 4,
+                printWidth: 80,
+                trailingComma: 'es5',
+                bracketSpacing: true,
+                endOfLine: 'lf'
+            });
+
+            return formattedCode;
+        } catch (error) {
+            console.error('Error formatting code:', error);
+            if (error instanceof Error) {
+                console.error('Error details:', {
+                    message: error.message,
+                    stack: error.stack
+                });
+            }
+            return code; // Return original code if formatting fails
+        }
+    }
+
 }
 
 
-
-
-
-
-
-
-
-
 export class TypeScriptObjectBuilder implements ObjectBuilder {
+    private sourceText: string;
+    private startPos: number;
+    private endPos: number;
+    private modifications: CodeModification[];
+
     constructor(
-        private sourceText: string,
-        private startPosition: number,
-        private endPosition: number,
-        private modifications: CodeModification[]
-    ) { }
-
-    findProperty(name: string, options: PropertyBuilderOptions<any>): void {
-        try {
-            const matches = this.findFirstLevelProperties(name);
-
-            if (matches.length === 0) {
-                if (options.onNotFound) {
-                    options.onNotFound(name);
-                }
-                return;
-            }
-
-            // Use the first valid match
-            const match = matches[0];
-            const value = this.sourceText.slice(match.valueStart, match.valueEnd).trim();
-            options.onFound(value);
-
-        } catch (error) {
-            if (options.onError) {
-                options.onError(error instanceof Error ? error : new Error(String(error)));
-            } else {
-                throw error;
-            }
-        }
+        sourceText: string,
+        startPos: number,
+        endPos: number,
+        modifications: CodeModification[]
+    ) {
+        this.sourceText = sourceText;
+        this.startPos = startPos;
+        this.endPos = endPos;
+        this.modifications = modifications;
+        DEBUG.log('TypeScriptObjectBuilder', 'constructor', 'Initialized new builder', {
+            textLength: sourceText.length,
+            startPos,
+            endPos,
+            textContent: sourceText.slice(startPos, endPos),
+            currentModifications: modifications.length
+        });
     }
 
-    findArray(name: string, options: ArrayBuilderOptions<any>): void {
-        try {
-            const matches = this.findFirstLevelArrays(name);
+    private findToken(
+        name: string,
+        expectedToken: string | null,
+        options: BuilderOptions<any>
+    ): { start: number; end: number; valueStart: number; valueEnd: number } | null {
+        DEBUG.log('TypeScriptObjectBuilder', 'findToken', `Searching for token "${name}"`, {
+            expectedToken,
+            searchRange: { start: this.startPos, end: this.endPos },
+            searchContent: this.sourceText.slice(this.startPos, this.endPos),
+            modifications: this.modifications
+        });
 
-            if (matches.length === 0) {
-                if (options.onNotFound) {
-                    options.onNotFound(name);
+        // First try to find in original text
+        const originalResult = this.findTokenInText(
+            this.sourceText.slice(this.startPos, this.endPos),
+            0,
+            this.endPos - this.startPos,
+            name,
+            expectedToken
+        );
+
+        if (originalResult) {
+            // Adjust positions for the actual text
+            return {
+                start: originalResult.start + this.startPos,
+                end: originalResult.end + this.startPos,
+                valueStart: originalResult.valueStart + this.startPos,
+                valueEnd: originalResult.valueEnd + this.startPos
+            };
+        }
+
+        // If not found in original text, check in the modified text
+        let modifiedText = this.sourceText.slice(this.startPos, this.endPos);
+        let offset = 0;
+
+        for (const mod of this.modifications.sort((a, b) => a.start - b.start)) {
+            // Only consider modifications within our range
+            if (mod.start >= this.startPos && mod.start <= this.endPos) {
+                // Apply the modification to our working text
+                const relativeStart = mod.start - this.startPos;
+                modifiedText = modifiedText.slice(0, relativeStart + offset) +
+                    mod.replacement +
+                    modifiedText.slice(relativeStart + offset + (mod.end - mod.start));
+                offset += mod.replacement.length - (mod.end - mod.start);
+            }
+        }
+
+        // Search in the combined text
+        const modResult = this.findTokenInText(
+            modifiedText,
+            0,
+            modifiedText.length,
+            name,
+            expectedToken
+        );
+
+        if (modResult) {
+            // Adjust positions back to original text space
+            return {
+                start: modResult.start + this.startPos,
+                end: modResult.end + this.startPos,
+                valueStart: modResult.valueStart + this.startPos,
+                valueEnd: modResult.valueEnd + this.startPos
+            };
+        }
+
+        DEBUG.log('TypeScriptObjectBuilder', 'findToken', `Token "${name}" not found`);
+        return null;
+    }
+
+    private findTokenInText(
+        text: string,
+        start: number,
+        end: number,
+        name: string,
+        expectedToken: string | null
+    ): { start: number; end: number; valueStart: number; valueEnd: number } | null {
+        DEBUG.log('TypeScriptObjectBuilder', 'findTokenInText', 'Searching in text segment', {
+            textSegment: text,
+            start,
+            end,
+            name,
+            expectedToken
+        });
+
+        let currentPos = start;
+        let inString = false;
+        let stringChar = '';
+        let inComment = false;
+        let commentType = '';
+        let currentLevel = 1;
+
+        while (currentPos < end) {
+            const char = text[currentPos];
+            const nextChar = currentPos + 1 < text.length ? text[currentPos + 1] : '';
+
+            // Handle comments
+            if (!inString && !inComment && char === '/' && nextChar === '/') {
+                inComment = true;
+                commentType = 'line';
+                currentPos += 2;
+                continue;
+            }
+            if (!inString && !inComment && char === '/' && nextChar === '*') {
+                inComment = true;
+                commentType = 'block';
+                currentPos += 2;
+                continue;
+            }
+            if (inComment) {
+                if (commentType === 'line' && char === '\n') {
+                    inComment = false;
+                } else if (commentType === 'block' && char === '*' && nextChar === '/') {
+                    inComment = false;
+                    currentPos++;
                 }
-                return;
+                currentPos++;
+                continue;
             }
 
-            // Use the first valid match
-            const match = matches[0];
-            const bodyPosition = this.extractArrayBody(match.index);
+            // Handle strings
+            if (!inString && (char === '"' || char === "'")) {
+                inString = true;
+                stringChar = char;
+                currentPos++;
+                continue;
+            }
+            if (inString && char === '\\' && nextChar === stringChar) {
+                currentPos += 2;
+                continue;
+            }
+            if (inString && char === stringChar) {
+                inString = false;
+                currentPos++;
+                continue;
+            }
+            if (inString) {
+                currentPos++;
+                continue;
+            }
 
-            const arrayBuilder = new TypeScriptArrayBuilder(
+            // Track nesting
+            if (char === '{' || char === '[') {
+                currentLevel++;
+            } else if (char === '}' || char === ']') {
+                currentLevel--;
+                if (currentLevel < 1) break;
+            }
+
+            // Look for property names at the current level
+            if (currentLevel === 1 && this.isIdentifierStart(char)) {
+                const identStart = currentPos;
+                let identEnd = currentPos;
+
+                while (identEnd < end && this.isIdentifierChar(text[identEnd])) {
+                    identEnd++;
+                }
+
+                const foundIdent = text.slice(identStart, identEnd);
+
+                if (foundIdent === name) {
+                    let pos = identEnd;
+                    while (pos < end && /\s/.test(text[pos])) {
+                        pos++;
+                    }
+
+                    if (text[pos] === ':') {
+                        pos++;
+                        while (pos < end && /\s/.test(text[pos])) {
+                            pos++;
+                        }
+
+                        if (expectedToken === null || text[pos] === expectedToken) {
+                            const valueStart = pos;
+                            let valueEnd = pos;
+                            let valueInString = false;
+                            let valueStringChar = '';
+                            let valueLevel = currentLevel;
+
+                            while (valueEnd < end) {
+                                const valueChar = text[valueEnd];
+                                const nextValueChar = valueEnd + 1 < text.length ?
+                                    text[valueEnd + 1] : '';
+
+                                if (!valueInString && (valueChar === '"' || valueChar === "'")) {
+                                    valueInString = true;
+                                    valueStringChar = valueChar;
+                                } else if (valueInString && valueChar === '\\' && nextValueChar === valueStringChar) {
+                                    valueEnd += 2;
+                                    continue;
+                                } else if (valueInString && valueChar === valueStringChar) {
+                                    valueInString = false;
+                                } else if (!valueInString) {
+                                    if (valueChar === '{' || valueChar === '[') {
+                                        valueLevel++;
+                                    } else if (valueChar === '}' || valueChar === ']') {
+                                        valueLevel--;
+                                        if (valueLevel < currentLevel) break;
+                                    } else if (valueLevel === currentLevel && valueChar === ',') {
+                                        break;
+                                    }
+                                }
+                                valueEnd++;
+                            }
+
+                            DEBUG.log('TypeScriptObjectBuilder', 'findTokenInText', 'Found token', {
+                                name,
+                                value: text.slice(valueStart, valueEnd).trim()
+                            });
+
+                            return {
+                                start: identStart,
+                                end: valueEnd,
+                                valueStart,
+                                valueEnd
+                            };
+                        }
+                    }
+                }
+            }
+
+            currentPos++;
+        }
+
+        return null;
+    }
+    private isIdentifierStart(char: string): boolean {
+        return /[a-zA-Z_$]/.test(char);
+    }
+
+    private isIdentifierChar(char: string): boolean {
+        return /[a-zA-Z0-9_$]/.test(char);
+    }
+
+    findObject(name: string, options: BuilderOptions<ObjectBuilder>): void {
+        DEBUG.log('TypeScriptObjectBuilder', 'findObject', `Searching for object "${name}"`);
+
+        const result = this.findToken(name, '{', options);
+
+        if (result) {
+            DEBUG.log('TypeScriptObjectBuilder', 'findObject', `Found object "${name}"`, {
+                range: { start: result.valueStart, end: result.valueEnd }
+            });
+
+            const builder = new TypeScriptObjectBuilder(
                 this.sourceText,
-                bodyPosition.start,
-                bodyPosition.end,
+                result.valueStart + 1,
+                result.valueEnd - 1,
                 this.modifications
             );
+            options.onFound(builder);
+        } else {
+            DEBUG.log('TypeScriptObjectBuilder', 'findObject', `Object "${name}" not found`);
+            if (options.onNotFound) {
+                options.onNotFound(name);
+            }
+        }
+    }
 
-            options.onFound(arrayBuilder.getItems());
+    findProperty(name: string, options: PropertyBuilderOptions<any>): void {
+        DEBUG.log('TypeScriptObjectBuilder', 'findProperty', `Searching for property "${name}"`);
 
+        const result = this.findToken(name, null, options);
+
+        if (result) {
+            let value;
+
+            // Check if this is from a modification at the end
+            const endModification = this.modifications.find(mod => mod.start === this.endPos);
+            if (endModification && result.valueStart >= this.endPos) {
+                // Extract value from the modification content
+                const modifiedContent = this.sourceText.slice(this.startPos, this.endPos) +
+                    endModification.replacement;
+                const relativeStart = result.valueStart - this.startPos;
+                const relativeEnd = result.valueEnd - this.startPos;
+                value = modifiedContent.slice(relativeStart, relativeEnd).trim();
+
+                DEBUG.log('TypeScriptObjectBuilder', 'findProperty', 'Found value in modification', {
+                    value,
+                    modifiedContent,
+                    relativeStart,
+                    relativeEnd
+                });
+            } else {
+                // Check for direct modifications first
+                const modification = this.modifications.find(mod =>
+                    mod.start === result.valueStart && mod.end === result.valueEnd
+                );
+
+                value = modification ?
+                    modification.replacement :
+                    this.sourceText.slice(result.valueStart, result.valueEnd).trim();
+            }
+
+            DEBUG.log('TypeScriptObjectBuilder', 'findProperty', `Found property "${name}"`, {
+                value,
+                wasModified: true
+            });
+            options.onFound(value);
+        } else {
+            DEBUG.log('TypeScriptObjectBuilder', 'findProperty', `Property "${name}" not found`);
+            if (options.onNotFound) {
+                options.onNotFound(name);
+            }
+        }
+    }
+
+    findArray(name: string, options: ArrayBuilderOptions): void {
+        DEBUG.log('TypeScriptObjectBuilder', 'findArray', `Searching for array "${name}"`);
+
+        try {
+            // Create a compatible options object for findToken
+            const tokenOptions = {
+                onFound: (value: any) => { },
+                onNotFound: options.onNotFound,
+                onError: options.onError
+            };
+
+            const result = this.findToken(name, '[', tokenOptions);
+
+            if (result) {
+                DEBUG.log('TypeScriptObjectBuilder', 'findArray', `Found array "${name}"`, {
+                    range: { start: result.valueStart, end: result.valueEnd }
+                });
+
+                // Check if this is from a modification
+                const modification = this.modifications.find(mod =>
+                    mod.start <= result.valueStart && mod.end >= result.valueEnd);
+
+                let arrayBuilder: ArrayBuilder;
+
+                if (modification) {
+                    // Extract just the array content from the modification
+                    const arrayContent = modification.replacement.substring(
+                        modification.replacement.indexOf('['),
+                        modification.replacement.lastIndexOf(']') + 1
+                    );
+
+                    arrayBuilder = new TypeScriptArrayBuilder(
+                        arrayContent,  // Use array content directly
+                        1,            // Skip the opening [
+                        arrayContent.length - 1,  // Skip the closing ]
+                        this.modifications
+                    );
+                } else {
+                    arrayBuilder = new TypeScriptArrayBuilder(
+                        this.sourceText,
+                        result.valueStart + 1,
+                        result.valueEnd - 1,
+                        this.modifications
+                    );
+                }
+
+                if (options.onFound) {
+                    options.onFound(arrayBuilder);  // Pass the ArrayBuilder instance directly
+                }
+            } else {
+                DEBUG.log('TypeScriptObjectBuilder', 'findArray', `Array "${name}" not found`);
+                if (options.onNotFound) {
+                    options.onNotFound(name);
+                }
+            }
         } catch (error) {
+            DEBUG.log('TypeScriptObjectBuilder', 'findArray', 'Error finding array', {
+                error: error instanceof Error ? error.message : String(error)
+            });
             if (options.onError) {
                 options.onError(error instanceof Error ? error : new Error(String(error)));
             } else {
@@ -409,440 +776,154 @@ export class TypeScriptObjectBuilder implements ObjectBuilder {
             }
         }
     }
-    private findFirstLevelProperties(name: string): { index: number; valueStart: number; valueEnd: number }[] {
-
-        // Create regex that matches the property anywhere in text
-        const regex = new RegExp(`${name}\\s*:\\s*([^,}\\n]+)`, 'g');
-        const matches: { index: number; valueStart: number; valueEnd: number }[] = [];
-
-        const isValidPropertyPosition = (pos: number): boolean => {
-            let braceCount = 0;
-            let inString = false;
-            let prevChar = '';
-
-            let debugText = '';
-
-            // Start from the beginning of our object scope
-            for (let i = this.startPosition; i < pos; i++) {
-                const char = this.sourceText[i];
-                debugText += char;
-
-                // Handle string context
-                if ((char === '"' || char === "'") && prevChar !== '\\') {
-                    inString = !inString;
-                } else if (!inString) {
-                    // Count braces only when not in string
-                    if (char === '{') {
-                        braceCount++;
-                    } else if (char === '}') {
-                        braceCount--;
-                    }
-                }
-                prevChar = char;
-            }
-
-            return braceCount === 1;
-        };
-
-        // Find all matches in the text
-        let match;
-        while ((match = regex.exec(this.sourceText)) !== null) {
-            const absoluteIndex = match.index;
-
-            // Skip if outside our boundaries
-            if (absoluteIndex < this.startPosition || absoluteIndex >= this.endPosition) {
-                continue;
-            }
-
-
-            // Skip if match is within a string literal
-            if (this.isWithinStringLiteral(absoluteIndex)) {
-                continue;
-            }
-
-            // Check if this property is at the correct nesting level
-            if (isValidPropertyPosition(absoluteIndex)) {
-
-                // Verify the match isn't part of a longer property name
-                const beforeChar = absoluteIndex > 0 ? this.sourceText[absoluteIndex - 1] : '';
-                const isValidStart = /^[,{\s]$/.test(beforeChar) || absoluteIndex === 0;
-
-                if (isValidStart) {
-                    // Extract the value positions
-                    const valueStart = absoluteIndex + match[0].length - match[1].length;
-                    const valueEnd = valueStart + match[1].length;
-
-                    matches.push({
-                        index: absoluteIndex,
-                        valueStart,
-                        valueEnd
-                    });
-                }
-            }
-        }
-
-        return matches;
-    }
-
-
-    private isObjectStructureValid(startPos: number, endPos: number): boolean {
-        let braceCount = 0;
-        let inString = false;
-        let prevChar = '';
-
-        for (let i = startPos; i < endPos; i++) {
-            const char = this.sourceText[i];
-
-            if ((char === '"' || char === "'") && prevChar !== '\\') {
-                inString = !inString;
-            } else if (!inString) {
-                if (char === '{') {
-                    braceCount++;
-                } else if (char === '}') {
-                    braceCount--;
-                }
-            }
-            prevChar = char;
-        }
-
-        return braceCount === 0;
-    }
-
-    private findFirstLevelArrays(name: string): { index: number; length: number }[] {
-        // First check if the object structure is valid
-        if (!this.isObjectStructureValid(this.startPosition, this.endPosition)) {
-            throw new Error('Invalid object structure: unmatched braces');
-        }
-
-        const regex = REGEX_PATTERNS.ARRAY_START(name);
-        const matches: { index: number; length: number }[] = [];
-        let currentPos = this.startPosition;
-
-        while (currentPos < this.endPosition) {
-            // Try to find the next array match
-            regex.lastIndex = currentPos;
-            const searchText = this.sourceText.slice(currentPos, this.endPosition);
-            const match = regex.exec(searchText);
-
-            if (!match) {
-                break;
-            }
-
-            const absoluteIndex = currentPos + match.index;
-
-            // Skip if match is within a string literal
-            if (this.isWithinStringLiteral(absoluteIndex)) {
-                currentPos = absoluteIndex + 1;
-                continue;
-            }
-
-            // Check if this array is at the root level
-            const textBeforeMatch = this.sourceText.slice(this.startPosition, absoluteIndex);
-            let braceCount = 0;
-            let isInString = false;
-            let prevChar = '';
-
-            for (const char of textBeforeMatch) {
-                if (char === '"' || char === "'") {
-                    if (prevChar !== '\\') {
-                        isInString = !isInString;
-                    }
-                } else if (!isInString) {
-                    if (char === '{') {
-                        braceCount++;
-                    } else if (char === '}') {
-                        braceCount--;
-                    }
-                }
-                prevChar = char;
-            }
-
-            // braceCount should be 1 for root level arrays (one for the object we're in)
-            if (braceCount === 1) {
-                // Verify array structure before adding the match
-                try {
-                    this.extractArrayBody(absoluteIndex);
-                    matches.push({
-                        index: absoluteIndex,
-                        length: match[0].length
-                    });
-                } catch (error) {
-                    if (error instanceof Error) {
-                        throw new Error(`Invalid array structure for "${name}": ${error.message}`);
-                    } else {
-                        throw new Error(`Invalid array structure for "${name}": ${String(error)}`);
-                    }
-                }
-            }
-
-            currentPos = absoluteIndex + 1;
-        }
-
-        return matches;
-    }
-
-
-    private isWithinStringLiteral(position: number): boolean {
-        let inString = false;
-        let prevChar = '';
-        let i = this.startPosition;
-
-        let debugText = '';
-
-        while (i < position) {
-            const char = this.sourceText[i];
-            debugText += char;
-
-            if ((char === '"' || char === "'") && prevChar !== '\\') {
-                inString = !inString;
-            }
-
-            prevChar = char;
-            i++;
-        }
-
-        return inString;
-    }
-
-
-    private extractArrayBody(startPos: number): BodyRange {
-        let bracketCount = 0;
-        let currentPos = startPos;
-        let bodyStart = -1;
-        let inString = false;
-        let prevChar = '';
-
-        // Find the opening bracket
-        while (currentPos < this.endPosition && this.sourceText[currentPos] !== '[') {
-            currentPos++;
-            if (currentPos >= this.endPosition) {
-                throw new Error('Array opening bracket not found');
-            }
-        }
-
-        // Track brackets and string context
-        while (currentPos < this.endPosition) {
-            const char = this.sourceText[currentPos];
-
-            if ((char === '"' || char === "'") && prevChar !== '\\') {
-                inString = !inString;
-            } else if (!inString) {
-                if (char === '[') {
-                    bracketCount++;
-                    if (bracketCount === 1) {
-                        bodyStart = currentPos + 1;
-                    }
-                } else if (char === ']') {
-                    bracketCount--;
-                    if (bracketCount === 0) {
-                        return {
-                            start: bodyStart,
-                            end: currentPos
-                        };
-                    }
-                }
-            }
-
-            prevChar = char;
-            currentPos++;
-        }
-
-        throw new Error('Invalid array structure: missing closing bracket');
-    }
-
 
     setPropertyValue(name: string, value: string): void {
-        const matches = this.findFirstLevelProperties(name);
-        if (matches.length > 0) {
-            const match = matches[0];
-            this.modifications.push({
-                start: match.valueStart,
-                end: match.valueEnd,
-                replacement: value
+        DEBUG.log('TypeScriptObjectBuilder', 'setPropertyValue',
+            `Setting value for property "${name}"`, { newValue: value });
+
+        const result = this.findToken(name, null, { onFound: () => { } });
+
+        if (result) {
+            DEBUG.log('TypeScriptObjectBuilder', 'setPropertyValue',
+                `Modifying property "${name}"`, {
+                oldValue: this.sourceText.slice(result.valueStart, result.valueEnd),
+                newValue: value
             });
+
+            // Calculate correct end position
+            let endPos = result.valueEnd;
+            while (endPos > result.valueStart && /[\s\n]/.test(this.sourceText[endPos - 1])) {
+                endPos--;
+            }
+
+            // Check if this is modifying a recently added property
+            const recentAddition = this.modifications.find(mod =>
+                mod.replacement.includes(`${name}:`));
+
+            if (recentAddition) {
+                // Find the array value in the recently added modification
+                const propertyMatch = new RegExp(`(${name}:\\s*)(\\[.*?\\])`, 'g');
+                recentAddition.replacement = recentAddition.replacement.replace(
+                    propertyMatch,
+                    `$1${value}`
+                );
+            } else {
+                // Add a new modification for existing property
+                this.modifications.push({
+                    start: result.valueStart,
+                    end: endPos,
+                    replacement: value
+                });
+            }
+
+            DEBUG.log('TypeScriptObjectBuilder', 'setPropertyValue',
+                'Modified property', {
+                name,
+                newValue: value,
+                modifications: this.modifications
+            });
+        } else {
+            // Property not found - check recent modifications
+            const recentMod = this.modifications.find(mod =>
+                mod.replacement.includes(`${name}:`));
+
+            if (recentMod) {
+                // Update value in the modification
+                const propertyMatch = new RegExp(`(${name}:\\s*)(\\[.*?\\])`, 'g');
+                recentMod.replacement = recentMod.replacement.replace(
+                    propertyMatch,
+                    `$1${value}`
+                );
+
+                DEBUG.log('TypeScriptObjectBuilder', 'setPropertyValue',
+                    'Updated recently added property', {
+                    name,
+                    newValue: value,
+                    updatedModification: recentMod
+                });
+            }
         }
     }
 
     addProperty(name: string, value: string): void {
-        const indentMatch = REGEX_PATTERNS.INDENTATION.exec(
-            this.sourceText.slice(this.startPosition, this.endPosition)
-        );
-        const indent = indentMatch ? indentMatch[0] : '    ';
+        DEBUG.log('TypeScriptObjectBuilder', 'addProperty', `Adding new property "${name}"`, {
+            value
+        });
+
+        const needsComma = this.sourceText[this.endPos - 1].trim() !== '';
+        const indent = this.getIndentation();
+
+        let addition = (needsComma ? ',\n' : '\n') +
+            indent + name + ': ' + value;
+
+        DEBUG.log('TypeScriptObjectBuilder', 'addProperty', 'Adding property with formatting', {
+            addition
+        });
 
         this.modifications.push({
-            start: this.endPosition - 1,
-            end: this.endPosition - 1,
-            replacement: `\n${indent}${name}: ${value},`
+            start: this.endPos,
+            end: this.endPos,
+            replacement: addition
         });
     }
 
     addArray(name: string, callback: (builder: ArrayBuilder) => void): void {
-        const indentMatch = REGEX_PATTERNS.INDENTATION.exec(
-            this.sourceText.slice(this.startPosition, this.endPosition)
-        );
-        const indent = indentMatch ? indentMatch[0] : '    ';
+        DEBUG.log('TypeScriptObjectBuilder', 'addArray', `Adding new array "${name}"`);
 
-        const arrayBuilder = new TypeScriptArrayBuilder(
-            this.sourceText,
-            this.endPosition - 1,
-            this.endPosition - 1,
-            this.modifications
-        );
+        // Check if there's a previous property that needs a comma
+        const beforeText = this.sourceText.slice(this.startPos, this.endPos).trim();
+        const needsComma = beforeText && beforeText.length > 0 && !beforeText.endsWith(',');
 
-        callback(arrayBuilder);
+        const indent = this.getIndentation();
 
-        const arrayContent = arrayBuilder.toString();
-        const newArray = `\n${indent}${name}: ${arrayContent},`;
+        // Create initial array text with consistent formatting and comma
+        const arrayText = `${needsComma ? ',' : ''}\n${indent}${name}: []`;
 
+        // Find the correct position to insert - before the closing brace
+        let insertPos = this.endPos;
+        while (insertPos > this.startPos && /[\s\n}]/.test(this.sourceText[insertPos - 1])) {
+            insertPos--;
+        }
+
+        // Add the new array to modifications
         this.modifications.push({
-            start: this.endPosition - 1,
-            end: this.endPosition - 1,
-            replacement: newArray
+            start: insertPos,
+            end: insertPos,
+            replacement: arrayText
+        });
+
+        DEBUG.log('TypeScriptObjectBuilder', 'addArray', 'Added new array', {
+            arrayName: name,
+            addedText: arrayText,
+            insertPosition: insertPos
         });
     }
 
 
 
-    findObject(name: string, options: BuilderOptions<ObjectBuilder>): void {
-        try {
-            const matches = this.findFirstLevelObjects(name);
+    private getIndentation(): string {
+        DEBUG.log('TypeScriptObjectBuilder', 'getIndentation', 'Calculating indentation');
 
-            if (matches.length === 0) {
-                if (options.onNotFound) {
-                    options.onNotFound(name);
-                }
-                return;
-            }
+        let pos = this.startPos - 1;
+        let indent = '';
 
-            // Use the first valid match
-            const match = matches[0];
-            const bodyRange = this.extractNestedObjectBody(match.index);
-
-            const builder = new TypeScriptObjectBuilder(
-                this.sourceText,
-                bodyRange.start,
-                bodyRange.end,
-                this.modifications
-            );
-
-            options.onFound(builder);
-
-        } catch (error) {
-            if (options.onError) {
-                options.onError(error instanceof Error ? error : new Error(String(error)));
-            } else {
-                throw error;
-            }
-        }
-    }
-
-    private findFirstLevelObjects(name: string): { index: number; length: number }[] {
-        const regex = REGEX_PATTERNS.OBJECT_START(name);
-        const matches: { index: number; length: number }[] = [];
-
-        const isValidObjectPosition = (pos: number): boolean => {
-            let braceCount = 0;
-            let inString = false;
-            let prevChar = '';
-
-            // Start from the beginning of our object scope
-            for (let i = this.startPosition; i < pos; i++) {
-                const char = this.sourceText[i];
-
-                // Handle string context
-                if ((char === '"' || char === "'") && prevChar !== '\\') {
-                    inString = !inString;
-                } else if (!inString) {
-                    // Count braces only when not in string
-                    if (char === '{') {
-                        braceCount++;
-                    } else if (char === '}') {
-                        braceCount--;
-                    }
-                }
-                prevChar = char;
-            }
-
-            // Should be exactly at level 1 (inside the current object)
-            return braceCount === 1;
-        };
-
-        // Find all matches in the text between our boundaries
-        let match;
-        while ((match = regex.exec(this.sourceText)) !== null) {
-            const absoluteIndex = match.index;
-
-            // Skip if outside our boundaries
-            if (absoluteIndex < this.startPosition || absoluteIndex >= this.endPosition) {
-                continue;
-            }
-
-            // Skip if match is within a string literal
-            if (this.isWithinStringLiteral(absoluteIndex)) {
-                continue;
-            }
-
-            // Check if this object is at the correct nesting level
-            if (isValidObjectPosition(absoluteIndex)) {
-                // Verify the match isn't part of a longer name
-                const beforeChar = absoluteIndex > 0 ? this.sourceText[absoluteIndex - 1] : '';
-                const isValidStart = /^[,{\s]$/.test(beforeChar) || absoluteIndex === 0;
-
-                if (isValidStart) {
-                    matches.push({
-                        index: absoluteIndex,
-                        length: match[0].length
-                    });
-                }
-            }
+        while (pos >= 0 && this.sourceText[pos] !== '\n') {
+            pos--;
         }
 
-        return matches;
-    }
-
-    private extractNestedObjectBody(startPos: number): BodyRange {
-        let braceCount = 0;
-        let currentPos = startPos;
-        let bodyStart = -1;
-        let inString = false;
-        let prevChar = '';
-
-        // Find the opening brace
-        while (currentPos < this.endPosition && this.sourceText[currentPos] !== '{') {
-            currentPos++;
-            if (currentPos >= this.endPosition) {
-                throw new Error('Object opening brace not found');
-            }
+        pos++;
+        while (pos < this.sourceText.length && /[ \t]/.test(this.sourceText[pos])) {
+            indent += this.sourceText[pos];
+            pos++;
         }
 
-        // Track braces and string context
-        while (currentPos < this.endPosition) {
-            const char = this.sourceText[currentPos];
+        const finalIndent = indent + '    ';
+        DEBUG.log('TypeScriptObjectBuilder', 'getIndentation', 'Calculated indentation', {
+            indentLength: finalIndent.length,
+            indent: finalIndent.replace(/ /g, '·').replace(/\t/g, '→')
+        });
 
-            if ((char === '"' || char === "'") && prevChar !== '\\') {
-                inString = !inString;
-            } else if (!inString) {
-                if (char === '{') {
-                    braceCount++;
-                    if (braceCount === 1) {
-                        bodyStart = currentPos + 1;
-                    }
-                } else if (char === '}') {
-                    braceCount--;
-                    if (braceCount === 0) {
-                        return {
-                            start: bodyStart,
-                            end: currentPos
-                        };
-                    }
-                }
-            }
-
-            prevChar = char;
-            currentPos++;
-        }
-
-        throw new Error('Invalid object structure: missing closing brace');
+        return finalIndent;
     }
 }
 
@@ -850,198 +931,562 @@ export class TypeScriptObjectBuilder implements ObjectBuilder {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-class TypeScriptArrayBuilder implements ArrayBuilder {
+export class TypeScriptArrayBuilder implements ArrayBuilder {
+    private sourceText: string;
+    private startPos: number;
+    private endPos: number;
+    private modifications: CodeModification[];
     private items: ObjectBuilder[] = [];
-    private newItemModifications: Map<number, string> = new Map();
 
     constructor(
-        private sourceText: string,
-        private startPosition: number,
-        private endPosition: number,
-        private modifications: CodeModification[]
-    ) { }
+        sourceText: string,
+        startPos: number,
+        endPos: number,
+        modifications: CodeModification[]
+    ) {
+        this.sourceText = sourceText;
+        this.startPos = startPos;
+        this.endPos = endPos;
+        this.modifications = modifications;
+
+        DEBUG.log('TypeScriptArrayBuilder', 'constructor', 'Initialized new array builder', {
+            textLength: sourceText.length,
+            startPos,
+            endPos,
+            currentModifications: modifications.length
+        });
+
+        // Parse existing array items if any
+        this.parseExistingItems();
+    }
+
+    addItem(value: string): void {
+        DEBUG.log('TypeScriptArrayBuilder', 'addItem', `Adding new item: ${value}`);
+
+        // Check if the array is empty or needs a comma
+        const arrayContent = this.sourceText.slice(this.startPos, this.endPos).trim();
+        const needsComma = arrayContent.length > 0;
+
+        // Create the new item text with appropriate comma and formatting
+        const itemText = `${needsComma ? ', ' : ''}${value}`;
+
+        // Find the position of the closing bracket
+        let insertPos = this.endPos;
+        while (insertPos > this.startPos && /[\s\]]/.test(this.sourceText[insertPos - 1])) {
+            insertPos--;
+        }
+
+        // Add to modifications at the correct position (before the closing bracket)
+        this.modifications.push({
+            start: insertPos,
+            end: insertPos,
+            replacement: itemText
+        });
+
+        DEBUG.log('TypeScriptArrayBuilder', 'addItem', 'Added item to array', {
+            value,
+            itemText,
+            insertPosition: insertPos,
+            modifications: this.modifications.length
+        });
+    }
+
+    private parseExistingItems(): void {
+        DEBUG.log('TypeScriptArrayBuilder', 'parseExistingItems', 'Starting to parse existing items');
+
+        let currentPos = this.startPos;
+        let inString = false;
+        let stringChar = '';
+        let braceLevel = 0;
+        let bracketLevel = 0;
+        let itemStart = -1;
+
+        while (currentPos < this.endPos) {
+            const char = this.sourceText[currentPos];
+            const nextChar = currentPos + 1 < this.sourceText.length ?
+                this.sourceText[currentPos + 1] : '';
+
+            // Handle string literals
+            if (!inString && (char === '"' || char === "'")) {
+                inString = true;
+                stringChar = char;
+            } else if (inString && char === '\\' && nextChar === stringChar) {
+                currentPos += 2;
+                continue;
+            } else if (inString && char === stringChar) {
+                inString = false;
+            }
+
+            if (!inString) {
+                if (char === '{') {
+                    braceLevel++;
+                    if (braceLevel === 1 && bracketLevel === 0) {
+                        itemStart = currentPos;
+                    }
+                } else if (char === '}') {
+                    braceLevel--;
+                    if (braceLevel === 0 && bracketLevel === 0 && itemStart !== -1) {
+                        // Found complete object
+                        const objectBuilder = new TypeScriptObjectBuilder(
+                            this.sourceText,
+                            itemStart + 1,
+                            currentPos,
+                            this.modifications
+                        );
+                        this.items.push(objectBuilder);
+                        itemStart = -1;
+                    }
+                } else if (char === '[') {
+                    bracketLevel++;
+                } else if (char === ']') {
+                    bracketLevel--;
+                }
+            }
+
+            currentPos++;
+        }
+
+        DEBUG.log('TypeScriptArrayBuilder', 'parseExistingItems',
+            `Parsed ${this.items.length} existing items`);
+    }
 
     addNewObject(callback: (builder: ObjectBuilder) => void): void {
-        const indentMatch = REGEX_PATTERNS.INDENTATION.exec(this.sourceText.slice(this.startPosition));
-        const indent = indentMatch ? indentMatch[0] : '    ';
+        DEBUG.log('TypeScriptArrayBuilder', 'addNewObject', 'Adding new object to array');
 
-        // Create a temporary object to hold modifications
-        const tempModifications: CodeModification[] = [];
+        const needsComma = this.items.length > 0;
+        const indent = this.getIndentation();
 
-        const objectBuilder = new TypeScriptObjectBuilder(
-            this.sourceText,
-            this.endPosition,
-            this.endPosition,
-            tempModifications
+        // Create new object text
+        let objectText = `${needsComma ? ',' : ''}\n${indent}{`;
+
+        // Create a temporary builder for the new object
+        const tempBuilder = new TypeScriptObjectBuilder(
+            objectText,
+            objectText.length - 1,
+            objectText.length,
+            []  // temporary modifications array
         );
 
-        // Let the caller modify the object
-        callback(objectBuilder);
+        // Let the callback configure the object
+        callback(tempBuilder);
 
-        // Store the modifications for this item
-        this.newItemModifications.set(this.items.length, this.processModifications(tempModifications));
+        // Get the modified object text
+        const modifiedText = tempBuilder.toString();
 
-        // Keep track of the builder for future reference
+        // Add closing brace with proper indentation
+        const fullText = modifiedText + `\n${indent}}`;
+
+        // Add to modifications
+        this.modifications.push({
+            start: this.endPos,
+            end: this.endPos,
+            replacement: fullText
+        });
+
+        // Create final object builder
+        const objectBuilder = new TypeScriptObjectBuilder(
+            this.sourceText + fullText,
+            this.endPos + (needsComma ? 2 : 1) + indent.length,
+            this.endPos + fullText.length - 1,
+            this.modifications
+        );
+
         this.items.push(objectBuilder);
+        this.endPos += fullText.length;
+
+        DEBUG.log('TypeScriptArrayBuilder', 'addNewObject', 'Added new object', {
+            totalItems: this.items.length,
+            addedText: fullText
+        });
     }
 
     getItems(): ObjectBuilder[] {
         return this.items;
     }
 
-    toString(): string {
-        if (this.items.length === 0) {
-            return '[]';
+    private getIndentation(): string {
+        let baseIndent = '';
+        let pos = this.startPos - 1;
+
+        // Find the start of the line
+        while (pos >= 0 && this.sourceText[pos] !== '\n') {
+            pos--;
         }
 
-        const indentMatch = REGEX_PATTERNS.INDENTATION.exec(this.sourceText.slice(this.startPosition));
-        const indent = indentMatch ? indentMatch[0] : '    ';
-        const innerIndent = `${indent}    `;
+        // Calculate base indentation
+        pos++;
+        while (pos < this.sourceText.length && /[ \t]/.test(this.sourceText[pos])) {
+            baseIndent += this.sourceText[pos];
+            pos++;
+        }
 
-        // Build array items string
-        const itemStrings = Array.from(this.newItemModifications.values());
+        // Add one level of indentation
+        return baseIndent + '    ';
+    }
+}
 
-        // Join items with proper formatting
-        const arrayContent = itemStrings
-            .map(item => `${innerIndent}${item}`)
-            .join(',\n');
 
-        // Create the complete array string with proper indentation
-        const arrayString = `[\n${arrayContent}\n${indent}]`;
 
-        // Add the array modification
-        this.modifications.push({
-            start: this.startPosition,
-            end: this.endPosition,
-            replacement: arrayString
+
+// Types for property tracking
+interface PropertyChange {
+    timestamp: number;
+    propertyName: string;
+    oldValue: string | undefined;
+    newValue: string;
+    type: 'add' | 'modify' | 'delete';
+}
+
+interface TrackedProperty {
+    name: string;
+    currentValue: string;
+    type: PropertyType;
+    required: boolean;
+    validation?: (value: any) => boolean;
+    history: PropertyChange[];
+}
+
+type PropertyType = 'string' | 'number' | 'boolean' | 'object' | 'array' | 'any';
+
+interface PropertyValidationError {
+    propertyName: string;
+    message: string;
+    code: string;
+    value?: string;
+}
+
+interface PropertyTrackingOptions {
+    strictTypes?: boolean;
+    trackHistory?: boolean;
+    validateOnChange?: boolean;
+    maxHistoryLength?: number;
+}
+
+export class PropertyTrackingObjectBuilder implements ObjectBuilder {
+    private innerBuilder: ObjectBuilder;
+    private trackedProperties: Map<string, TrackedProperty>;
+    private options: PropertyTrackingOptions;
+    private validationErrors: PropertyValidationError[];
+
+    constructor(
+        builder: ObjectBuilder,
+        options: PropertyTrackingOptions = {}
+    ) {
+        this.innerBuilder = builder;
+        this.trackedProperties = new Map();
+        this.validationErrors = [];
+        this.options = {
+            strictTypes: options.strictTypes ?? true,
+            trackHistory: options.trackHistory ?? true,
+            validateOnChange: options.validateOnChange ?? true,
+            maxHistoryLength: options.maxHistoryLength ?? 100
+        };
+
+        DEBUG.log('PropertyTrackingObjectBuilder', 'constructor', 'Initialized with options', {
+            options: this.options
         });
-
-        return arrayString;
     }
 
-    private processModifications(itemModifications: CodeModification[]): string {
-        // Sort modifications in reverse order
-        const sortedMods = [...itemModifications].sort((a, b) => b.start - a.start);
+    // Register a property to be tracked
+    registerProperty(
+        name: string,
+        type: PropertyType,
+        options: {
+            required?: boolean;
+            validation?: (value: any) => boolean;
+            initialValue?: string;
+        } = {}
+    ): void {
+        DEBUG.log('PropertyTrackingObjectBuilder', 'registerProperty',
+            `Registering property "${name}"`, { type, options });
 
-        // Start with an empty object
-        let objectContent = '{}';
+        const trackedProp: TrackedProperty = {
+            name,
+            type,
+            required: options.required ?? false,
+            validation: options.validation,
+            currentValue: '',
+            history: []
+        };
 
-        // Process each modification
-        for (const mod of sortedMods) {
-            // Extract the property name and value from the modification
-            const propertyMatch = mod.replacement.match(/([a-zA-Z0-9_]+)\s*:\s*(.+)$/);
-            if (propertyMatch) {
-                const [, propName, propValue] = propertyMatch;
+        this.trackedProperties.set(name, trackedProp);
 
-                // If it's an empty object, replace it entirely
-                if (objectContent === '{}') {
-                    objectContent = `{ ${propName}: ${propValue.trim()} }`;
-                } else {
-                    // Insert the new property while preserving existing ones
-                    objectContent = objectContent.replace(
-                        /^{/,
-                        `{ ${propName}: ${propValue.trim()}, `
-                    );
+        // Immediately find and record the initial value after registration
+        this.innerBuilder.findProperty(name, {
+            onFound: (value) => {
+                trackedProp.currentValue = value;
+                this.recordChange(name, undefined, value, 'add');
+            },
+            onNotFound: () => {
+                if (options.initialValue) {
+                    trackedProp.currentValue = options.initialValue;
+                    this.recordChange(name, undefined, options.initialValue, 'add');
                 }
+            }
+        });
+    }
+
+    // Implementation of ObjectBuilder interface methods
+    findObject(name: string, options: BuilderOptions<ObjectBuilder>): void {
+        this.innerBuilder.findObject(name, {
+            ...options,
+            onFound: (builder) => {
+                const trackingBuilder = new PropertyTrackingObjectBuilder(builder, this.options);
+                options.onFound(trackingBuilder);
+            }
+        });
+    }
+
+    findProperty(name: string, options: PropertyBuilderOptions<any>): void {
+        this.innerBuilder.findProperty(name, {
+            ...options,
+            onFound: (value) => {
+                const trackedProp = this.trackedProperties.get(name);
+                if (trackedProp) {
+                    // Only record if this is the first time we're setting the value
+                    if (!trackedProp.currentValue && trackedProp.history.length === 0) {
+                        this.recordChange(name, undefined, value, 'add');
+                    }
+                    trackedProp.currentValue = value;
+                }
+                options.onFound(value);
+            }
+        });
+    }
+
+    findArray(name: string, options: ArrayBuilderOptions): void {
+        // Create a new options object that matches the ArrayBuilderOptions interface
+        const arrayOptions: ArrayBuilderOptions = {
+            ...options,
+            onFound: options.onFound
+                ? (builder: ArrayBuilder) => options.onFound!(builder)
+                : undefined
+        };
+        this.innerBuilder.findArray(name, arrayOptions);
+    }
+
+
+    setPropertyValue(name: string, value: string): void {
+        const trackedProp = this.trackedProperties.get(name);
+
+        if (trackedProp) {
+            // Validate type if strict typing is enabled
+            if (this.options.strictTypes && !this.validateType(value, trackedProp.type)) {
+                this.addValidationError(name, `Invalid type for property "${name}". Expected ${trackedProp.type}`, 'TYPE_ERROR', value);
+                if (this.options.validateOnChange) {
+                    return;
+                }
+            }
+
+            // Run custom validation if provided
+            if (trackedProp.validation && !trackedProp.validation(this.parseValue(value))) {
+                this.addValidationError(name, `Validation failed for property "${name}"`, 'VALIDATION_ERROR', value);
+                if (this.options.validateOnChange) {
+                    return;
+                }
+            }
+
+            // Record the change with the current value as old value
+            this.recordChange(name, trackedProp.currentValue, value, 'modify');
+            trackedProp.currentValue = value;
+        }
+
+        this.innerBuilder.setPropertyValue(name, value);
+    }
+
+    addProperty(name: string, value: string): void {
+        const trackedProp = this.trackedProperties.get(name);
+
+        if (trackedProp) {
+            if (this.options.strictTypes && !this.validateType(value, trackedProp.type)) {
+                this.addValidationError(name, `Invalid type for property "${name}". Expected ${trackedProp.type}`, 'TYPE_ERROR', value);
+                if (this.options.validateOnChange) {
+                    return;
+                }
+            }
+
+            this.recordChange(name, undefined, value, 'add');
+            trackedProp.currentValue = value;
+        }
+
+        this.innerBuilder.addProperty(name, value);
+    }
+
+    addArray(name: string, callback: (builder: ArrayBuilder) => void): void {
+        this.innerBuilder.addArray(name, callback);
+    }
+
+    // Utility methods for property tracking
+    private recordChange(
+        propertyName: string,
+        oldValue: string | undefined,
+        newValue: string,
+        type: PropertyChange['type']
+    ): void {
+        if (!this.options.trackHistory) return;
+
+        const trackedProp = this.trackedProperties.get(propertyName);
+        if (!trackedProp) return;
+
+        const change: PropertyChange = {
+            timestamp: Date.now(),
+            propertyName,
+            oldValue,
+            newValue,
+            type
+        };
+
+        trackedProp.history.push(change);
+
+        // Trim history if it exceeds max length
+        if (this.options.maxHistoryLength &&
+            trackedProp.history.length > this.options.maxHistoryLength) {
+            trackedProp.history = trackedProp.history.slice(-this.options.maxHistoryLength);
+        }
+
+        DEBUG.log('PropertyTrackingObjectBuilder', 'recordChange',
+            `Recorded change for property "${propertyName}"`, { change });
+    }
+
+    private validateType(value: string, expectedType: PropertyType): boolean {
+        try {
+            // Special handling for string type - any value that can be represented as a string is valid
+            if (expectedType === 'string') {
+                return true; // All values can be strings
+            }
+
+            // Special handling for array string representations
+            if (expectedType === 'array') {
+                // Check if it looks like an array literal
+                if (value.trim().startsWith('[') && value.trim().endsWith(']')) {
+                    try {
+                        const arrayStr = value.replace(/'/g, '"'); // Replace single quotes with double quotes
+                        JSON.parse(arrayStr);
+                        return true;
+                    } catch {
+                        return false;
+                    }
+                }
+                return false;
+            }
+
+            const parsed = this.parseValue(value);
+
+            switch (expectedType) {
+                case 'number':
+                    return typeof parsed === 'number' && !isNaN(parsed);
+                case 'boolean':
+                    return typeof parsed === 'boolean';
+                case 'object':
+                    return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed);
+                case 'any':
+                    return true;
+                default:
+                    return false;
+            }
+        } catch {
+            return false;
+        }
+    }
+    private parseValue(value: string): any {
+        // Handle special values
+        if (value === "null") return null;
+        if (value === "undefined") return undefined;
+
+        // Handle string literals
+        if ((value.startsWith('"') && value.endsWith('"')) ||
+            (value.startsWith("'") && value.endsWith("'"))) {
+            return value.slice(1, -1);
+        }
+
+        // Try regular JSON parse
+        try {
+            return JSON.parse(value);
+        } catch {
+            return value;
+        }
+    }
+
+    private addValidationError(
+        propertyName: string,
+        message: string,
+        code: string,
+        value?: string
+    ): void {
+        const error: PropertyValidationError = {
+            propertyName,
+            message,
+            code,
+            value
+        };
+
+        this.validationErrors.push(error);
+        DEBUG.log('PropertyTrackingObjectBuilder', 'addValidationError',
+            `Validation error for property "${propertyName}"`, { error });
+    }
+
+    // Public methods for accessing tracking data
+    getPropertyHistory(propertyName: string): PropertyChange[] {
+        return this.trackedProperties.get(propertyName)?.history ?? [];
+    }
+
+    getValidationErrors(): PropertyValidationError[] {
+        return [...this.validationErrors];
+    }
+
+    clearValidationErrors(): void {
+        this.validationErrors = [];
+    }
+
+    validateAllProperties(): PropertyValidationError[] {
+        this.clearValidationErrors();
+
+        for (const [name, prop] of this.trackedProperties) {
+            // Check required properties
+            if (prop.required) {
+                const value = this.parseValue(prop.currentValue);
+                // Consider null, undefined, and "null"/"undefined" strings as empty values
+                if (!value || value === null || value === "null" || value === "undefined") {
+                    this.addValidationError(
+                        name,
+                        `Required property "${name}" is missing`,
+                        'REQUIRED_ERROR'
+                    );
+                    continue;
+                }
+            }
+
+            if (!prop.currentValue) continue;
+
+            // Validate type
+            if (this.options.strictTypes && !this.validateType(prop.currentValue, prop.type)) {
+                this.addValidationError(
+                    name,
+                    `Invalid type for property "${name}". Expected ${prop.type}`,
+                    'TYPE_ERROR',
+                    prop.currentValue
+                );
+            }
+
+            // Run custom validation
+            if (prop.validation && !prop.validation(this.parseValue(prop.currentValue))) {
+                this.addValidationError(
+                    name,
+                    `Validation failed for property "${name}"`,
+                    'VALIDATION_ERROR',
+                    prop.currentValue
+                );
             }
         }
 
-        return objectContent;
+        return this.getValidationErrors();
     }
-}
-// Usage example
-function modifyTypeScriptCode(code: string): string {
-    const builder = new TypeScriptCodeBuilder();
-    builder.parseText(code);
 
-    builder.findObject('villageLocation', {
-        onFound: (objectBuilder) => {
-            objectBuilder.findArray('sublocations', {
-                onFound: (builders) => {
-                    for (const itemBuilder of builders) {
-                        itemBuilder.findProperty('id', {
-                            onFound: (id: any) => {
-                                if (typeof id === 'string' && id !== null) {
-                                    // sublocation already exists
-                                    return;
-                                } else {
-                                    itemBuilder.setPropertyValue('id', `'newSublocation'`);
-                                }
-                            },
-                            onNotFound: () => {
-                                itemBuilder.setPropertyValue('id', `'newSublocation'`);
-                            }
-                        });
-                    }
-                },
-                onNotFound: () => {
-                    objectBuilder.addArray('sublocations', (newArrayBuilder) => {
-                        newArrayBuilder.addNewObject((newObjectBuilder) => {
-                            newObjectBuilder.setPropertyValue('id', `'newSublocation'`);
-                        });
-                    });
-                }
-            });
-        },
-        onNotFound: (name) => {
-            throw new Error(`Location '${name}' not found`);
-        }
-    });
+    getTrackedPropertyNames(): string[] {
+        return Array.from(this.trackedProperties.keys());
+    }
 
-    return builder.toString();
+    getPropertyDetails(propertyName: string): TrackedProperty | undefined {
+        return this.trackedProperties.get(propertyName);
+    }
 }

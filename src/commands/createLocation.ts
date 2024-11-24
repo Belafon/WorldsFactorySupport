@@ -12,6 +12,11 @@ export const locationImportingString = (locationId: string) => {
     return `import { ${locationId}Location } from './locations/${locationId}${locationFilePostfixWithoutFileType}';\n`;
 };
 
+
+export const locationImportingStringInLocationFolder = (locationId: string) => {
+    return `import { ${locationId}Location } from './${locationId}${locationFilePostfixWithoutFileType}';\n`;
+}
+
 export const containerObjectName = 'locations';
 
 export const createLocation = async (context: vscode.ExtensionContext) => {
@@ -71,7 +76,7 @@ async function selectParentLocation(availableLocations: string[]): Promise<strin
         'No parent location',
         ...locationPaths.map(loc => loc.path)
     ];
-    
+
     const selected = await vscode.window.showQuickPick(options, {
         placeHolder: 'Select parent location (or none)',
         title: 'Parent Location Selection'
@@ -81,10 +86,10 @@ async function selectParentLocation(availableLocations: string[]): Promise<strin
         return new Error('No parent location selected');
     }
 
-    if (selected === 'No parent location'){
+    if (selected === 'No parent location') {
         return undefined;
     }
-    
+
 
 
     // Find the location ID from the selected path
@@ -140,7 +145,7 @@ const getUserInput = async (): Promise<{
     const availableLocations = await getAvailableLocations();
     const parentLocationId = await selectParentLocation(availableLocations);
 
-    if(parentLocationId instanceof Error){
+    if (parentLocationId instanceof Error) {
         return null;
     }
 
@@ -171,6 +176,33 @@ export type T${locationIdWithCapital}LocationData = {
 
     const locationFilePath = path.join(locationsDir(), locationId + locationFilePostfix);
 
+
+    // If there's a parent location, add this location as a sublocation
+    if (parentLocationId) {
+
+        // find the parent location file path
+        let parentLocationFilePath = path.join(locationsDir(), parentLocationId + locationFilePostfix);
+        if (!fs.existsSync(parentLocationFilePath)) {
+            vscode.window.showErrorMessage(`Parent location file ${parentLocationFilePath} does not exist.`);
+            return locationFilePath;
+        }
+
+        let parentLocationFileData = await fs.promises.readFile(parentLocationFilePath, 'utf8');
+
+        let updatedParentLocationFildeData = await addToObjectArrayProperty(
+            `${parentLocationId}Location`,
+            'sublocations',
+            `${locationId}Location`,
+            parentLocationFileData
+        );
+
+        // add import to start of the file of the new sublocation
+        updatedParentLocationFildeData = locationImportingStringInLocationFolder(locationId) + updatedParentLocationFildeData;
+
+        await fs.promises.writeFile(parentLocationFilePath, updatedParentLocationFildeData);
+    }
+
+
     // Create the new location file
     fs.writeFile(locationFilePath, newLocationContent, (err) => {
         if (err) {
@@ -184,18 +216,6 @@ export type T${locationIdWithCapital}LocationData = {
     registerFileData = locationImportingString(locationId) + registerFileData;
     let updatedData = await addObjectToOtherObject(
         containerObjectName, registerFileData, `${locationId}: ${locationId}Location`, false);
-
-
-
-    // If there's a parent location, add this location as a sublocation
-    if (parentLocationId) {
-        updatedData = await addToObjectArrayProperty(
-            `${parentLocationId}Location`,
-            'sublocations',
-            `${locationId}Location`,
-            updatedData
-        );
-    }
 
     await fs.promises.writeFile(registerFilePath(), updatedData);
 
@@ -214,24 +234,11 @@ export type T${locationIdWithCapital}LocationData = {
     return locationFilePath;
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
 async function getLocationData(locationId: string): Promise<{ name: string } | null> {
     try {
         const locationFilePath = path.join(locationsDir(), `${locationId}${locationFilePostfix}`);
         const content = await fs.promises.readFile(locationFilePath, 'utf8');
-        
+
         // Extract name from the location file
         let nameMatch = content.match(/name:\s*_\('([^']+)'\)/);
         if (nameMatch) {
@@ -252,7 +259,6 @@ async function getLocationData(locationId: string): Promise<{ name: string } | n
     }
 }
 
-
 async function buildLocationPath(locationId: string): Promise<string> {
     try {
         const registerContent = await fs.promises.readFile(registerFilePath(), 'utf8');
@@ -270,9 +276,9 @@ async function buildLocationPath(locationId: string): Promise<string> {
                 new RegExp(`(\\w+)Location:\\s*{[^}]*sublocations:\\s*\\[([^\\]]*)${currentId}Location`)
             );
 
-            if (!parentMatch){
+            if (!parentMatch) {
                 break;
-            } 
+            }
 
             const parentId = parentMatch[1];
             paths.unshift(parentId);
@@ -287,4 +293,5 @@ async function buildLocationPath(locationId: string): Promise<string> {
         return locationId;
     }
 }
+
 

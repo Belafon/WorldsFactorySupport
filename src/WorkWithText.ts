@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
+import { TypeScriptCodeBuilder } from './typescriptObjectParser/TypeScriptCodeBuilder';
 
 
 export const addObjectToOtherObject = async (
@@ -285,15 +286,6 @@ export const extendPipelinedType = async (data: string, typeName: string, typeTo
     });
 };
 
-
-
-
-
-
-
-
-// Add these to WorkWithText.ts
-
 /**
  * Adds or updates an array property in an object
  */
@@ -303,59 +295,36 @@ export async function addToObjectArrayProperty(
     itemToAdd: string,
     data: string
 ): Promise<string> {
-    // Step 1: Match the object name with 'Location' suffix
-    const namePattern = `${objectName}`;
-    
-    // Step 2: Match optional whitespace
-    const whitespace = `\\s*`;
-    
-    // Step 3: Match the type annotation
-    // - Colon followed by optional whitespace
-    // - TLocation with optional whitespace
-    // - Generic parameter with single quotes and object name
-    // - Optional whitespace
-    const typeAnnotation = `:${whitespace}TLocation<${whitespace}'[^']+'${whitespace}>${whitespace}`;
-    
-    // Step 4: Match the equals sign with optional whitespace
-    const assignment = `=${whitespace}`;
-    
-    // Step 5: Match the opening brace
-    const openBrace = `{`;
-    
-    // Step 6: Match all content until closing brace
-    const content = `([^}]*)`;  // Capture group for the content
-    
-    // Step 7: Match the closing brace
-    const closeBrace = `}`;
-    
-    // Combine all parts into final regex
-    const finalPattern = `${namePattern}${whitespace}${typeAnnotation}${assignment}${openBrace}${content}${closeBrace}`;
-    
-    // Create regex with flags
-    const objectRegex = new RegExp(finalPattern, 's');
-    
-    return data.replace(objectRegex, (match, innerContent) => {
-        // Check if property exists
-        if (!match.includes(`${propertyName}:`)) {
-            // Find the position after the opening brace
-            const braceIndex = match.indexOf('{');
-            return match.slice(0, braceIndex + 1) + 
-                   `\n\t${propertyName}: [${itemToAdd}],` + 
-                   match.slice(braceIndex + 1);
-        }
+    const builder = new TypeScriptCodeBuilder();
+    builder.parseText(data);
 
-        // Update existing array
-        return match.replace(
-            new RegExp(`${propertyName}:\\s*\\[(.*?)\\]`, 's'),
-            (arrayMatch, contents) => {
-                const trimmedContents = contents.trim();
-                const updatedContents = trimmedContents
-                    ? `${propertyName}: [${trimmedContents}, ${itemToAdd}]`
-                    : `${propertyName}: [${itemToAdd}]`;
-                return updatedContents;
-            }
-        );
+    builder.findObject(objectName, {
+        onFound: (objectBuilder) => {
+            objectBuilder.findArray(propertyName, {
+                onFound: (arrayBuilder) => {
+                    // If array exists, add new item to it using addItem
+                    arrayBuilder.addItem(itemToAdd);
+                },
+                onNotFound: () => {
+                    // If array doesn't exist, create it and add the item
+                    objectBuilder.addArray(propertyName, (arrayBuilder) => {
+                        arrayBuilder.addItem(itemToAdd);
+                    });
+                },
+                onError: (error) => {
+                    throw error;
+                }
+            });
+        },
+        onNotFound: () => {
+            throw new Error(`Object ${objectName} not found`);
+        },
+        onError: (error) => {
+            throw error;
+        }
     });
+
+    return builder.toString();
 }
 
 export async function removeFromObjectArrayProperty(
