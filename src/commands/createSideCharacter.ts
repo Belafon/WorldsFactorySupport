@@ -80,7 +80,7 @@ export async function createSideCharacterWithArgs(characterId: string, character
 export const ${characterIdWithCapital}: TSideCharacter<'${characterId}'> = {
 \tid: '${characterId}',
 \tname: _('${characterName}'),
-\tgeneralDescription: \`\`,
+\tdescription: \`\`,
 \t
 \tinit: {
 \t\tinventory: [],

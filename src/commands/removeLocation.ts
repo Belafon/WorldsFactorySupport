@@ -4,7 +4,8 @@ import * as path from 'path';
 import { removeFile, removeObjectFromOtherObject, removeTextFromFile } from '../WorkWithText';
 import { locationFilePostfix, locationsDir, worldStateFilePath } from '../Paths';
 import { registerFilePath } from '../Paths';
-import { containerObjectName, locationDataImportString, locationImportingString } from './createLocation';
+import { containerObjectName, locationDataImportString, locationImportingString, locationImportingStringInLocationFolder } from './createLocation';
+import { TypeScriptCodeBuilder } from '../typescriptObjectParser/TypeScriptCodeBuilder';
 
 export const removeLocation = async (context: vscode.ExtensionContext) => {
     if (!vscode.workspace.workspaceFolders) {
@@ -32,7 +33,12 @@ export const removeLocation = async (context: vscode.ExtensionContext) => {
 
     // Remove location file
     const locationFilePath = path.join(locationsDir(), selectedLocation + locationFilePostfix);
-    removeFile(locationFilePath);
+    await removeFile(locationFilePath);
+
+
+
+    // Remove location from sublocations in all other locations
+    await removeLocationFromSublocations(selectedLocation);
 
 
 
@@ -70,3 +76,53 @@ export const removeLocation = async (context: vscode.ExtensionContext) => {
     fs.writeFileSync(worldStateFilePath(), worldStateFileData);
 
 };
+
+
+
+/**
+ * Removes a location from sublocation arrays in all location files
+ */
+async function removeLocationFromSublocations(locationToRemove: string): Promise<void> {
+    // Get list of all location files
+    const locationFiles = fs.readdirSync(locationsDir())
+        .filter(file => file.endsWith(locationFilePostfix));
+
+    for (const locationFile of locationFiles) {
+        const filePath = path.join(locationsDir(), locationFile);
+        let fileContent = await fs.promises.readFile(filePath, 'utf8');
+        
+        let wasModified = false;
+        const builder = new TypeScriptCodeBuilder();
+        builder.parseText(fileContent);
+
+        const locationId = path.basename(locationFile, locationFilePostfix);
+        const locationObjectName = `${locationId}Location`;
+
+        // Find the location object
+        builder.findObject(locationObjectName, {
+            onFound: async (objectBuilder) => {
+                // Find the sublocations array
+                objectBuilder.findArray('sublocations', {
+                    onFound: async (arrayBuilder) => {
+                        // Get all items to find the index of the location to remove
+                        const items = arrayBuilder.getItems();
+                        const locationToRemoveRef = `${locationToRemove}Location`;
+                        
+                        // Find and remove the item with the matching location reference
+                        items.forEach((item: any, index: number) => {
+                            if (String(item).includes(locationToRemoveRef)) {
+                                arrayBuilder.removeItemAtIndex(index);
+                                wasModified = true;
+                            }
+                        });
+                    }
+                });
+            }
+        });
+
+        if (wasModified) {
+            const updatedContent = await builder.toString();
+            await fs.promises.writeFile(filePath, updatedContent);
+        }
+    }
+}
