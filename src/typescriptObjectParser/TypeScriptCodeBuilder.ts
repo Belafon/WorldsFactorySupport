@@ -44,8 +44,10 @@ export interface CodeBuilder {
 
 export interface ArrayBuilder {
     addNewObject(callback: (builder: ObjectBuilder) => void): void;
-    addItem(value: string): void;
     getItems(): ObjectBuilder[];
+    addItem(value: string): void;
+    removeItem(value: string): void;
+    removeItemAtIndex(index: number): void;
 }
 
 export interface ObjectBuilder {
@@ -991,6 +993,170 @@ export class TypeScriptArrayBuilder implements ArrayBuilder {
         });
     }
 
+    removeItem(valueToRemove: string): void {
+        DEBUG.log('TypeScriptArrayBuilder', 'removeItem', `Removing item: ${valueToRemove}`);
+
+        // Get the array content
+        let arrayContent = this.sourceText.slice(this.startPos, this.endPos).trim();
+
+        // Split by commas while preserving array and object structures
+        const items: string[] = [];
+        let currentItem = '';
+        let depth = 0;
+        let inString = false;
+        let stringChar = '';
+
+        for (let i = 0; i < arrayContent.length; i++) {
+            const char = arrayContent[i];
+            const nextChar = i + 1 < arrayContent.length ? arrayContent[i + 1] : '';
+
+            // Handle strings
+            if (!inString && (char === '"' || char === "'")) {
+                inString = true;
+                stringChar = char;
+            } else if (inString && char === '\\' && nextChar === stringChar) {
+                currentItem += char + nextChar;
+                i++;
+                continue;
+            } else if (inString && char === stringChar) {
+                inString = false;
+            }
+
+            // Track depth of nested structures
+            if (!inString) {
+                if (char === '{' || char === '[') {
+                    depth++;
+                } else if (char === '}' || char === ']') {
+                    depth--;
+                } else if (char === ',' && depth === 0) {
+                    if (currentItem.trim()) {
+                        items.push(currentItem.trim());
+                    }
+                    currentItem = '';
+                    continue;
+                }
+            }
+
+            currentItem += char;
+        }
+
+        // Add the last item if it exists
+        if (currentItem.trim()) {
+            items.push(currentItem.trim());
+        }
+
+        // Filter out the item to remove
+        const filteredItems = items.filter(item => item.trim() !== valueToRemove.trim());
+
+        // Create the new array content
+        const newArrayContent = filteredItems.join(', ');
+
+        // Add the modification
+        this.modifications.push({
+            start: this.startPos,
+            end: this.endPos,
+            replacement: newArrayContent
+        });
+
+        DEBUG.log('TypeScriptArrayBuilder', 'removeItem', 'Updated array content', {
+            newContent: newArrayContent,
+            removedItem: valueToRemove
+        });
+    }
+
+    removeItemAtIndex(index: number): void {
+        DEBUG.log('TypeScriptArrayBuilder', 'removeItemAtIndex', `Removing item at index: ${index}`);
+    
+        // Get the array content including brackets
+        let fullContent = this.sourceText.slice(this.startPos - 1, this.endPos + 1).trim();
+        DEBUG.log('TypeScriptArrayBuilder', 'removeItemAtIndex', 'Processing array content', {
+            content: fullContent,
+            startPos: this.startPos,
+            endPos: this.endPos
+        });
+    
+        // Ensure we have valid array brackets
+        if (!fullContent.startsWith('[') || !fullContent.endsWith(']')) {
+            throw new Error('Invalid array structure');
+        }
+    
+        // Get just the items content (without brackets)
+        let arrayContent = fullContent.slice(1, -1).trim();
+    
+        // Split by commas while preserving array and object structures
+        const items: string[] = [];
+        let currentItem = '';
+        let depth = 0;
+        let inString = false;
+        let stringChar = '';
+    
+        for (let i = 0; i < arrayContent.length; i++) {
+            const char = arrayContent[i];
+            const nextChar = i + 1 < arrayContent.length ? arrayContent[i + 1] : '';
+    
+            // Handle strings
+            if (!inString && (char === '"' || char === "'")) {
+                inString = true;
+                stringChar = char;
+            } else if (inString && char === '\\' && nextChar === stringChar) {
+                currentItem += char + nextChar;
+                i++;
+                continue;
+            } else if (inString && char === stringChar) {
+                inString = false;
+            }
+    
+            // Track depth of nested structures
+            if (!inString) {
+                if (char === '{' || char === '[') {
+                    depth++;
+                } else if (char === '}' || char === ']') {
+                    depth--;
+                } else if (char === ',' && depth === 0) {
+                    if (currentItem.trim()) {
+                        items.push(currentItem.trim());
+                    }
+                    currentItem = '';
+                    continue;
+                }
+            }
+    
+            currentItem += char;
+        }
+    
+        // Add the last item if it exists
+        if (currentItem.trim()) {
+            items.push(currentItem.trim());
+        }
+    
+        // Validate index
+        if (index < 0 || index >= items.length) {
+            throw new Error(`Index ${index} is out of bounds for array with length ${items.length}`);
+        }
+    
+        // Remove the item at the specified index
+        const removedItem = items[index];
+        items.splice(index, 1);
+    
+        // Create the new array content with brackets
+        const newArrayContent = '[' + items.join(', ') + ']';
+    
+        // Add the modification, including the brackets in the range
+        const modification = {
+            start: this.startPos - 1,  // Include opening bracket
+            end: this.endPos + 1,      // Include closing bracket
+            replacement: newArrayContent
+        };
+        this.modifications.push(modification);
+    
+        DEBUG.log('TypeScriptArrayBuilder', 'removeItemAtIndex', 'Updated array content', {
+            newContent: newArrayContent,
+            removedItem,
+            removedIndex: index,
+            modification
+        });
+    }
+    
     private parseExistingItems(): void {
         DEBUG.log('TypeScriptArrayBuilder', 'parseExistingItems', 'Starting to parse existing items');
 

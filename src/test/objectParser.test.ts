@@ -102,17 +102,17 @@ const location = {
                 { id: 'church' }
             ]
         };`;
-        
+
             const builder = new TypeScriptCodeBuilder();
             builder.parseText(input);
-        
+
             builder.findObject('location', {
                 onFound: (objectBuilder) => {
                     objectBuilder.findArray('sublocations', {
                         onFound: (arrayBuilder) => {
                             // Get the array items
                             const items = arrayBuilder.getItems();
-                            
+
                             // Modify the first item
                             const firstItem = items[0];
                             firstItem.setPropertyValue('id', "'new-market'");
@@ -120,7 +120,7 @@ const location = {
                     });
                 }
             });
-        
+
             // Verify the modification
             assert.strictEqual(await builder.toString(), expected);
         });
@@ -282,20 +282,20 @@ const location = {
             ],
             name: 'New Village'
         };`;
-        
+
             const builder = new TypeScriptCodeBuilder();
             builder.parseText(input);
-        
+
             builder.findObject('location', {
                 onFound: (objectBuilder) => {
                     objectBuilder.setPropertyValue('id', "'new-village'");
                     objectBuilder.setPropertyValue('name', "'New Village'");
-        
+
                     objectBuilder.findArray('sublocations', {
                         onFound: (arrayBuilder) => {
                             // Get the object builders for the array items
                             const items = arrayBuilder.getItems();
-                            
+
                             // Update each item's id property
                             items.forEach((itemBuilder, index) => {
                                 itemBuilder.setPropertyValue('id',
@@ -306,7 +306,7 @@ const location = {
                     });
                 }
             });
-        
+
             assert.strictEqual(await builder.toString(), expected);
         });
     });
@@ -1463,6 +1463,26 @@ const myObject = {
         assert.strictEqual(items.length, 2);
         assert.strictEqual(objectCount, 2);
     });
+
+    test('Should get item from array', () => {
+        const input = `
+        const myObject = {
+            myArray: ['item1']
+        };`;
+        const builder = new TypeScriptCodeBuilder();
+        builder.parseText(input);
+
+        builder.findObject('myObject', {
+            onFound: (objBuilder) => {
+                objBuilder.findArray('myArray', {
+                    onFound: (arrayBuilder) => {
+                        const item = arrayBuilder.getItems()[0];
+                        assert.strictEqual(item, "'item1'");
+                    }
+                });
+            }
+        }); 
+    });
 });
 
 
@@ -1952,6 +1972,412 @@ export const typedLocation: Location<'test'> = {
                 objectBuilder.findArray('items', {
                     onFound: (arrayBuilder) => {
                         arrayBuilder.addItem("'b'");
+                    }
+                });
+            }
+        });
+
+        assert.strictEqual(await builder.toString(), expected);
+    });
+});
+
+
+suite('TypeScript Array Builder Remove Item Tests', () => {
+    test('Should remove simple string item from array', async () => {
+        const input = `
+export const testObject = {
+    items: ['a', 'b', 'c']
+};`;
+        const expected = `export const testObject = {
+    items: ['a', 'c'],
+};\n`;
+
+        const builder = new TypeScriptCodeBuilder();
+        builder.parseText(input);
+
+        builder.findObject('testObject', {
+            onFound: (objectBuilder) => {
+                objectBuilder.findArray('items', {
+                    onFound: (arrayBuilder) => {
+                        arrayBuilder.removeItem("'b'");
+                    }
+                });
+            }
+        });
+
+        assert.strictEqual(await builder.toString(), expected);
+    });
+
+    test('Should remove object reference from array', async () => {
+        const input = `
+export const testObject = {
+    items: [objectA, objectB, objectC]
+};`;
+        const expected = `export const testObject = {
+    items: [objectA, objectC],
+};\n`;
+
+        const builder = new TypeScriptCodeBuilder();
+        builder.parseText(input);
+
+        builder.findObject('testObject', {
+            onFound: (objectBuilder) => {
+                objectBuilder.findArray('items', {
+                    onFound: (arrayBuilder) => {
+                        arrayBuilder.removeItem("objectB");
+                    }
+                });
+            }
+        });
+
+        assert.strictEqual(await builder.toString(), expected);
+    });
+
+    test('Should handle removal from array with nested objects', async () => {
+        const input = `
+export const testObject = {
+    items: [
+        { id: 1, name: 'first' },
+        { id: 2, name: 'second' },
+        { id: 3, name: 'third' }
+    ]
+};`;
+        const expected = `export const testObject = {
+    items: [
+        { id: 1, name: 'first' },
+        { id: 3, name: 'third' },
+    ],
+};\n`;
+
+        const builder = new TypeScriptCodeBuilder();
+        builder.parseText(input);
+
+        builder.findObject('testObject', {
+            onFound: (objectBuilder) => {
+                objectBuilder.findArray('items', {
+                    onFound: (arrayBuilder) => {
+                        arrayBuilder.removeItem("{ id: 2, name: 'second' }");
+                    }
+                });
+            }
+        });
+
+        assert.strictEqual(await builder.toString(), expected);
+    });
+
+    test('Should handle array with string literals containing commas', async () => {
+        const input = `
+export const testObject = {
+    items: ['first, item', 'second, remove this', 'third, item']
+};`;
+        const expected = `export const testObject = {
+    items: ['first, item', 'third, item'],
+};\n`;
+
+        const builder = new TypeScriptCodeBuilder();
+        builder.parseText(input);
+
+        builder.findObject('testObject', {
+            onFound: (objectBuilder) => {
+                objectBuilder.findArray('items', {
+                    onFound: (arrayBuilder) => {
+                        arrayBuilder.removeItem("'second, remove this'");
+                    }
+                });
+            }
+        });
+
+        assert.strictEqual(await builder.toString(), expected);
+    });
+
+    test('Should handle array with escaped quotes', async () => {
+        const input = `
+export const testObject = {
+    items: ['normal', 'has \\'quotes\\'', 'last']
+};`;
+        const expected = `export const testObject = {
+    items: ['normal', 'last'],
+};\n`;
+
+        const builder = new TypeScriptCodeBuilder();
+        builder.parseText(input);
+
+        builder.findObject('testObject', {
+            onFound: (objectBuilder) => {
+                objectBuilder.findArray('items', {
+                    onFound: (arrayBuilder) => {
+                        arrayBuilder.removeItem("'has \\'quotes\\''");
+                    }
+                });
+            }
+        });
+
+        assert.strictEqual(await builder.toString(), expected);
+    });
+
+    test('Should handle array with nested arrays', async () => {
+        const input = `
+export const testObject = {
+    items: [
+        [1, 2],
+        [3, 4],
+        [5, 6]
+    ]
+};`;
+        const expected = `export const testObject = {
+    items: [
+        [1, 2],
+        [5, 6],
+    ],
+};\n`;
+
+        const builder = new TypeScriptCodeBuilder();
+        builder.parseText(input);
+
+        builder.findObject('testObject', {
+            onFound: (objectBuilder) => {
+                objectBuilder.findArray('items', {
+                    onFound: (arrayBuilder) => {
+                        arrayBuilder.removeItem("[3, 4]");
+                    }
+                });
+            }
+        });
+
+        assert.strictEqual(await builder.toString(), expected);
+    });
+
+    test('Should handle removal of multiple items', async () => {
+        const input = `
+export const testObject = {
+    items: ['a', 'b', 'c', 'b', 'd']
+};`;
+        const expected = `export const testObject = {
+    items: ['a', 'c', 'd'],
+};\n`;
+
+        const builder = new TypeScriptCodeBuilder();
+        builder.parseText(input);
+
+        builder.findObject('testObject', {
+            onFound: (objectBuilder) => {
+                objectBuilder.findArray('items', {
+                    onFound: (arrayBuilder) => {
+                        arrayBuilder.removeItem("'b'");
+                    }
+                });
+            }
+        });
+
+        assert.strictEqual(await builder.toString(), expected);
+    });
+
+    test('Should handle whitespace in array items', async () => {
+        const input = `
+export const testObject = {
+    items: [
+        'a',
+        'remove this',
+        'c'    ]
+};`;
+        const expected = `export const testObject = {
+    items: ['a', 'c'],
+};\n`;
+
+        const builder = new TypeScriptCodeBuilder();
+        builder.parseText(input);
+
+        builder.findObject('testObject', {
+            onFound: (objectBuilder) => {
+                objectBuilder.findArray('items', {
+                    onFound: (arrayBuilder) => {
+                        arrayBuilder.removeItem("'remove this'");
+                    }
+                });
+            }
+        });
+
+        assert.strictEqual(await builder.toString(), expected);
+    });
+});
+
+
+suite('TypeScript Array Builder RemoveItemAtIndex Tests', () => {
+    test('Should remove item at valid index', async () => {
+        const input = `
+export const testObject = {
+    items: ['a', 'b', 'c']
+};`;
+        const expected = `export const testObject = {
+    items: ['a', 'c'],
+};\n`;
+
+        const builder = new TypeScriptCodeBuilder();
+        builder.parseText(input);
+
+        builder.findObject('testObject', {
+            onFound: (objectBuilder) => {
+                objectBuilder.findArray('items', {
+                    onFound: (arrayBuilder) => {
+                        arrayBuilder.removeItemAtIndex(1);
+                    }
+                });
+            }
+        });
+
+        assert.strictEqual(await builder.toString(), expected);
+    });
+
+    test('Should throw error for invalid index', () => {
+        const input = `
+export const testObject = {
+    items: ['a', 'b']
+};`;
+
+        const builder = new TypeScriptCodeBuilder();
+        builder.parseText(input);
+
+        assert.throws(() => {
+            builder.findObject('testObject', {
+                onFound: (objectBuilder) => {
+                    objectBuilder.findArray('items', {
+                        onFound: (arrayBuilder) => {
+                            arrayBuilder.removeItemAtIndex(5); // Invalid index
+                        }
+                    });
+                }
+            });
+        }, /Index 5 is out of bounds/);
+    });
+
+    test('Should handle nested objects at specified index', async () => {
+        const input = `
+export const testObject = {
+    items: [
+        { id: 1 },
+        { id: 2 },
+        { id: 3 }
+    ]
+};`;
+        const expected = `export const testObject = {\n    items: [{ id: 1 }, { id: 3 }],\n};\n`;
+
+        const builder = new TypeScriptCodeBuilder();
+        builder.parseText(input);
+
+        builder.findObject('testObject', {
+            onFound: (objectBuilder) => {
+                objectBuilder.findArray('items', {
+                    onFound: (arrayBuilder) => {
+                        arrayBuilder.removeItemAtIndex(1);
+                    }
+                });
+            }
+        });
+
+        assert.strictEqual(await builder.toString(), expected);
+    });
+
+    test('Should handle nested arrays at specified index', async () => {
+        const input = `
+export const testObject = {
+    items: [
+        [1, 2],
+        [3, 4],
+        [5, 6]
+    ]
+};`;
+        const expected = `export const testObject = {
+    items: [
+        [1, 2],
+        [5, 6],
+    ],
+};\n`;
+
+        const builder = new TypeScriptCodeBuilder();
+        builder.parseText(input);
+
+        builder.findObject('testObject', {
+            onFound: (objectBuilder) => {
+                objectBuilder.findArray('items', {
+                    onFound: (arrayBuilder) => {
+                        arrayBuilder.removeItemAtIndex(1);
+                    }
+                });
+            }
+        });
+
+        assert.strictEqual(await builder.toString(), expected);
+    });
+
+    test('Should handle array with string literals containing commas at specified index', async () => {
+        const input = `
+export const testObject = {
+    items: ['first, item', 'second, remove this', 'third, item']
+};`;
+        const expected = `export const testObject = {
+    items: ['first, item', 'third, item'],
+};\n`;
+
+        const builder = new TypeScriptCodeBuilder();
+        builder.parseText(input);
+
+        builder.findObject('testObject', {
+            onFound: (objectBuilder) => {
+                objectBuilder.findArray('items', {
+                    onFound: (arrayBuilder) => {
+                        arrayBuilder.removeItemAtIndex(1);
+                    }
+                });
+            }
+        });
+
+        assert.strictEqual(await builder.toString(), expected);
+    });
+
+    test('Remove last item from array', async () => {
+        const input = `
+export const testObject = {
+    items: ['first']
+};`;
+        const expected = `export const testObject = {
+    items: [],
+};\n`;
+
+        const builder = new TypeScriptCodeBuilder();
+        builder.parseText(input);
+
+        builder.findObject('testObject', {
+            onFound: (objectBuilder) => {
+                objectBuilder.findArray('items', {
+                    onFound: (arrayBuilder) => {
+                        arrayBuilder.removeItemAtIndex(0);
+                    }
+                });
+            }
+        });
+
+        assert.strictEqual(await builder.toString(), expected);
+    });
+
+    test('Should maintain formatting when removing last item', async () => {
+        const input = `
+export const testObject = {
+    items: [
+        'first',
+        'second',
+        'last'
+    ]
+};`;
+        const expected = `export const testObject = {\n    items: ['first', 'second'],\n};\n`;
+
+        const builder = new TypeScriptCodeBuilder();
+        builder.parseText(input);
+
+        builder.findObject('testObject', {
+            onFound: (objectBuilder) => {
+                objectBuilder.findArray('items', {
+                    onFound: (arrayBuilder) => {
+                        arrayBuilder.removeItemAtIndex(2);
                     }
                 });
             }
