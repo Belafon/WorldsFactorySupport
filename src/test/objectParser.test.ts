@@ -1,2388 +1,1125 @@
 import * as assert from 'assert';
 import * as vscode from 'vscode';
-import { CodeModification, ObjectBuilder, PropertyTrackingObjectBuilder, TypeScriptArrayBuilder, TypeScriptCodeBuilder, TypeScriptObjectBuilder } from '../typescriptObjectParser/TypeScriptCodeBuilder';
-
-suite('TypeScript Code Builder Test Suite', () => {
-    vscode.window.showInformationMessage('Starting TypeScript Code Builder tests.');
-
-    suite('Object Finding and Modification Tests', () => {
-        test('Should find and modify existing object property', async () => {
-            const input = `
-export const villageLocation = {
-    id: 'village',
-    name: 'Village',
-    description: 'A peaceful village',
-    sublocations: [
-        { id: 'market' }
-    ]
-};`;
-            const expected = `
-export const villageLocation = {
-    id: 'new-village',
-    name: 'Village',
-    description: 'A peaceful village',
-    sublocations: [
-        { id: 'market' }
-    ]
-};`;
-
-            const builder = new TypeScriptCodeBuilder();
-            builder.parseText(input);
+import { ParsedTypeToken, SourcePointer, Tokenizer, TokenStream, TypeScriptArrayParser, TypeScriptBodyParser, TypeScriptCodeBuilder, TypeScriptObjectParser, TypeScriptTypeBuilder, TypeScriptTypeParser, TypeScriptVariableParser } from '../typescriptObjectParser/ObjectParser';
 
 
-            builder.findObject('villageLocation', {
-                onFound: (objectBuilder) => {
-                    objectBuilder.setPropertyValue('id', "'new-village'");
-                },
-                onNotFound: (name) => {
-                    assert.fail(`Should have found object ${name}`);
-                }
-            });
 
-            assert.strictEqual(builder.toString(), expected);
-        });
 
-        test('Should handle object not found case', () => {
-            const input = `const emptyObject = {};`;
-            let notFoundCalled = false;
 
-            const builder = new TypeScriptCodeBuilder();
-            builder.parseText(input);
 
-            builder.findObject('nonexistentObject', {
-                onFound: () => {
-                    assert.fail('Should not find non-existent object');
-                },
-                onNotFound: () => {
-                    notFoundCalled = true;
-                }
-            });
 
-            assert.strictEqual(notFoundCalled, true);
-        });
 
-        test('Should preserve formatting when modifying objects', async () => {
-            const input = `
-const location = {
-    id:     'old-id',  // with extra spaces
-    name:   'Name',    // and comments
-};`;
-            const expected = `
-const location = {
-    id:     'new-id',  // with extra spaces
-    name:   'Name',    // and comments
-};`;
 
-            const builder = new TypeScriptCodeBuilder();
-            builder.parseText(input);
 
-            builder.findObject('location', {
-                onFound: (objectBuilder) => {
-                    objectBuilder.setPropertyValue('id', "'new-id'");
-                }
-            });
+suite('Parsers', () => {
 
-            assert.strictEqual(builder.toString(), expected);
-        });
-    });
+	suite('TypeScriptBodyParser', () => {
 
-    suite('Array Manipulation Tests', () => {
-        test('Should find and modify array items', async () => {
-            const input = `
-        const location = {
-            sublocations: [
-                { id: 'market' },
-                { id: 'church' }
-            ]
-        };`;
-            const expected = `
-        const location = {
-            sublocations: [
-                { id: 'new-market' },
-                { id: 'church' }
-            ]
-        };`;
+		test('Should parse a single class', async () => {
+			const input = `class MyClass {}`;
+			const parser = new TypeScriptBodyParser(input);
+			const result = parser.parseBody();
 
-            const builder = new TypeScriptCodeBuilder();
-            builder.parseText(input);
+			// We expect 1 item: a class
+			assert.strictEqual(result.length, 1, 'There should be exactly one parsed item');
+			assert.strictEqual(result[0].type, 'class', 'The parsed item should be a class');
+			assert.strictEqual(result[0].name, 'MyClass', 'The class name should be "MyClass"');
+		});
 
-            builder.findObject('location', {
-                onFound: (objectBuilder) => {
-                    objectBuilder.findArray('sublocations', {
-                        onFound: (arrayBuilder) => {
-                            // Get the array items
-                            const items = arrayBuilder.getItems();
+		test('Should parse interface and type declarations', async () => {
+			const input = `
+	  interface MyInterface {}
+	  type MyType = number;
+	`;
+			const parser = new TypeScriptBodyParser(input);
+			const result = parser.parseBody();
 
-                            // Modify the first item
-                            const firstItem = items[0];
-                            firstItem.setPropertyValue('id', "'new-market'");
-                        }
-                    });
-                }
-            });
+			// We expect 2 items: an interface and a type
+			assert.strictEqual(result.length, 2);
+			assert.strictEqual(result[0].type, 'interface', 'First item should be interface');
+			assert.strictEqual(result[0].name, 'MyInterface');
+			assert.strictEqual(result[1].type, 'type', 'Second item should be type');
+			assert.strictEqual(result[1].name, 'MyType');
+		});
 
-            // Verify the modification
-            assert.strictEqual(await builder.toString(), expected);
-        });
+		test('Should parse an enum', async () => {
+			const input = `enum Colors { Red, Green, Blue }`;
+			const parser = new TypeScriptBodyParser(input);
+			const result = parser.parseBody();
 
-        test('Should add new array when not found', async () => {
-            const input = `
-const location = {
-    id: 'village'
-};`;
-            const expected = `
-const location = {
-    id: 'village',
-    sublocations: [
-        { id: 'new-sublocation' }
-    ]
-};`;
+			// We expect 1 item: an enum
+			assert.strictEqual(result.length, 1);
+			assert.strictEqual(result[0].type, 'enum');
+			assert.strictEqual(result[0].name, 'Colors');
+		});
 
-            const builder = new TypeScriptCodeBuilder();
-            builder.parseText(input);
+		test('Should parse multiple variable declarations', async () => {
+			const input = `
+	  const x = 10;
+	  let y = "hello";
+	  var z = true;
+	`;
+			const parser = new TypeScriptBodyParser(input);
+			const result = parser.parseBody();
 
-            builder.findObject('location', {
-                onFound: (objectBuilder) => {
-                    objectBuilder.findArray('sublocations', {
-                        onFound: () => {
-                            assert.fail('Should not find non-existent array');
-                        },
-                        onNotFound: () => {
-                            objectBuilder.addArray('sublocations', (arrayBuilder) => {
-                                arrayBuilder.addNewObject((objBuilder) => {
-                                    objBuilder.setPropertyValue('id', "'new-sublocation'");
-                                });
-                            });
-                        }
-                    });
-                }
-            });
+			// We expect 3 items (all are 'variable')
+			assert.strictEqual(result.length, 3);
+			assert.strictEqual(result[0].type, 'variable');
+			assert.strictEqual(result[1].type, 'variable');
+			assert.strictEqual(result[2].type, 'variable');
+		});
 
-            assert.strictEqual(builder.toString(), expected);
-        });
-    });
+		test('Should parse a function', async () => {
+			const input = `function greet() { return "Hello"; }`;
+			const parser = new TypeScriptBodyParser(input);
+			const result = parser.parseBody();
 
-    suite('Property Manipulation Tests', () => {
-        test('Should add new property to existing object', async () => {
-            const input = `
-const location = {
-    id: 'village'
-};`;
-            const expected = `
-const location = {
-    id: 'village',
-    name: 'New Village'
-};`;
+			// We expect 1 item: a function
+			assert.strictEqual(result.length, 1);
+			assert.strictEqual(result[0].type, 'function');
+			assert.strictEqual(result[0].name, 'greet');
+		});
 
-            const builder = new TypeScriptCodeBuilder();
-            builder.parseText(input);
+		test('Should parse class with generic parameters', async () => {
+			const input = `
+	  class GenericClass<T, U> {
+		method(arg: T): U {
+		  return {} as U;
+		}
+	  }
+	`;
+			const parser = new TypeScriptBodyParser(input);
+			const result = parser.parseBody();
 
-            builder.findObject('location', {
-                onFound: (objectBuilder) => {
-                    objectBuilder.addProperty('name', "'New Village'");
-                }
-            });
+			// We expect 1 item: a class
+			assert.strictEqual(result.length, 1);
+			assert.strictEqual(result[0].type, 'class');
+			assert.strictEqual(result[0].name, 'GenericClass');
+			assert.ok(result[0].templateParams && result[0].templateParams.includes('<T, U>'));
+		});
 
-            assert.strictEqual(builder.toString(), expected);
-        });
+		test('Should skip unknown tokens gracefully', async () => {
+			const input = `
+	  #!someUnknownDirective
+	  class KnownClass {}
+	  ?? random stuff ??
+	  interface KnownInterface {}
+	`;
+			const parser = new TypeScriptBodyParser(input);
+			const result = parser.parseBody();
 
-        test('Should handle property not found case', () => {
-            const input = `const location = { id: 'village' };`;
-            let notFoundCalled = false;
+			// We expect 2 recognized items: class and interface
+			assert.strictEqual(result.length, 2, 'We should have 2 recognized items');
+			assert.strictEqual(result[0].type, 'class');
+			assert.strictEqual(result[0].name, 'KnownClass');
+			assert.strictEqual(result[1].type, 'interface');
+			assert.strictEqual(result[1].name, 'KnownInterface');
+		});
 
-            const builder = new TypeScriptCodeBuilder();
-            builder.parseText(input);
+		test('Should handle missing closing brace in class', async () => {
+			const input = `
+class NotClosed {
+}
+let x = 10
 
-            builder.findObject('location', {
-                onFound: (objectBuilder) => {
-                    objectBuilder.findProperty('nonexistent', {
-                        onFound: () => {
-                            assert.fail('Should not find non-existent property');
-                        },
-                        onNotFound: () => {
-                            notFoundCalled = true;
-                        }
-                    });
-                }
-            });
+	`;
+			const parser = new TypeScriptBodyParser(input);
+			const result = parser.parseBody();
 
-            assert.strictEqual(notFoundCalled, true);
-        });
-    });
+			// We expect 2 items: a class and a variable
+			assert.strictEqual(result.length, 2);
+			assert.strictEqual(result[0].type, 'class');
+			assert.strictEqual(result[0].name, 'NotClosed');
+			assert.strictEqual(result[1].type, 'variable');
+			assert.strictEqual(result[1].name, 'x');
+		});
 
-    suite('Error Handling Tests', () => {
-        test('Should handle malformed object syntax', () => {
-            const input = `const location = { id: 'village' // missing closing brace`;
-            let errorCalled = false;
+		test('Should parse multiple top-level constructs', async () => {
+			const input = `
+	  class A {}
+	  interface B {}
+	  type C = string;
+	  enum D { X, Y }
+	  function e() {}
+	  const f = 123;
+	`;
+			const parser = new TypeScriptBodyParser(input);
+			const result = parser.parseBody();
 
-            const builder = new TypeScriptCodeBuilder();
-            builder.parseText(input);
+			// We expect 6 recognized items
+			assert.strictEqual(result.length, 6);
+			assert.strictEqual(result[0].type, 'class');
+			assert.strictEqual(result[0].name, 'A');
+			assert.strictEqual(result[1].type, 'interface');
+			assert.strictEqual(result[1].name, 'B');
+			assert.strictEqual(result[2].type, 'type');
+			assert.strictEqual(result[2].name, 'C');
+			assert.strictEqual(result[3].type, 'enum');
+			assert.strictEqual(result[3].name, 'D');
+			assert.strictEqual(result[4].type, 'function');
+			assert.strictEqual(result[4].name, 'e');
+			assert.strictEqual(result[5].type, 'variable');
+			assert.strictEqual(result[5].name, 'f');
+		});
 
-            builder.findObject('location', {
-                onFound: () => {
-                    assert.fail('Should not process malformed object');
-                },
-                onError: (error) => {
-                    errorCalled = true;
-                    assert.ok(error instanceof Error);
-                }
-            });
+	});
 
-            assert.strictEqual(errorCalled, true);
-        });
+	suite('TypeScriptBodyParser - Array Literal Parsing', () => {
 
-        test('Should handle nested object errors', () => {
-            const input = `
-const location = {
-    sublocations: [
-        { id: 'market',
-        // malformed nested object
-    ]
-};`;
-            let errorCalled = false;
+		test('Should parse a top-level array literal as an array token', () => {
+			// The input is a complete array literal containing mixed element types.
+			const input = `[ 1, 2, { a: b }, [ 3, 4 ], function() {} ]`;
+			const parser = new TypeScriptBodyParser(input);
+			const result = parser.parseBody();
 
-            const builder = new TypeScriptCodeBuilder();
-            builder.parseText(input);
+			// We expect one top-level token representing the array literal.
+			assert.strictEqual(result.length, 1, 'Expected one top-level token for the array literal');
 
-            builder.findObject('location', {
-                onFound: (objectBuilder) => {
-                    objectBuilder.findArray('sublocations', {
-                        onFound: () => {
-                            assert.fail('Should not process malformed array');
-                        },
-                        onError: (error) => {
-                            errorCalled = true;
-                            assert.ok(error instanceof Error);
-                        }
-                    });
-                }
-            });
+			const arrayToken = result[0];
+			// Check that the token type is "array".
+			assert.strictEqual(arrayToken.type, 'array', 'Expected token type to be "array"');
+			// Check that the token starts at index 0.
+			assert.strictEqual(arrayToken.start, 0, 'Expected array token to start at index 0');
+			// Check that the token spans the entire input.
+			assert.strictEqual(arrayToken.end, input.length, 'Expected array token to span entire input');
+		});
 
-            assert.strictEqual(errorCalled, true);
-        });
-    });
+		test('Should parse a variable declaration with an array initializer and return both tokens', () => {
+			// In this input, a variable declaration uses an array literal as its initializer.
+			const input = `const arr = [ 1, 2, 3 ];`;
+			const parser = new TypeScriptBodyParser(input);
+			const result = parser.parseBody();
 
-    suite('Complex Modification Tests', () => {
-        test('Should handle multiple modifications in one pass', async () => {
-            const input = `
-        const location = {
-            id: 'village',
-            sublocations: [
-                { id: 'market' },
-                { id: 'church' }
-            ],
-            name: 'Old Village'
-        };`;
-            const expected = `
-        const location = {
-            id: 'new-village',
-            sublocations: [
-                { id: 'new-market' },
-                { id: 'new-church' }
-            ],
-            name: 'New Village'
-        };`;
+			// We expect two tokens:
+			// 1. The variable token for "arr"
+			// 2. The array token covering the array literal initializer.
+			assert.strictEqual(result.length, 2, 'Expected two tokens: one variable and one array literal');
 
-            const builder = new TypeScriptCodeBuilder();
-            builder.parseText(input);
+			const variableToken = result[0];
+			// Verify the variable token type and name.
+			assert.strictEqual(variableToken.type, 'variable', 'Expected first token to be a variable');
+			assert.strictEqual(variableToken.name, 'arr', 'Expected variable name to be "arr"');
 
-            builder.findObject('location', {
-                onFound: (objectBuilder) => {
-                    objectBuilder.setPropertyValue('id', "'new-village'");
-                    objectBuilder.setPropertyValue('name', "'New Village'");
+			const arrayToken = result[1];
+			// Verify the array token type.
+			assert.strictEqual(arrayToken.type, 'array', 'Expected second token to be an array literal');
 
-                    objectBuilder.findArray('sublocations', {
-                        onFound: (arrayBuilder) => {
-                            // Get the object builders for the array items
-                            const items = arrayBuilder.getItems();
+			// The start index of the array token should be the position of the first '['.
+			const expectedStart = input.indexOf('[');
+			// The end index should be one plus the position of the last ']' character.
+			const expectedEnd = input.lastIndexOf(']') + 1;
+			assert.strictEqual(arrayToken.start, expectedStart, 'Array token start should match the position of "["');
+			assert.strictEqual(arrayToken.end, expectedEnd, 'Array token end should match the position after "]"');
+		});
 
-                            // Update each item's id property
-                            items.forEach((itemBuilder, index) => {
-                                itemBuilder.setPropertyValue('id',
-                                    index === 0 ? "'new-market'" : "'new-church'"
-                                );
-                            });
-                        }
-                    });
-                }
-            });
+		test('Should correctly parse an array literal with mixed element types', () => {
+			// The input array contains a string literal, a number literal, an object literal, and a nested array.
+			const input = `[ 'text', 42, { key: value }, [ true, false ] ]`;
+			const parser = new TypeScriptBodyParser(input);
+			const result = parser.parseBody();
 
-            assert.strictEqual(await builder.toString(), expected);
-        });
-    });
+			// We expect one top-level token representing the array literal.
+			assert.strictEqual(result.length, 1, 'Expected one top-level token for the array literal');
+
+			const arrayToken = result[0];
+			assert.strictEqual(arrayToken.type, 'array', 'Expected token type "array"');
+			assert.strictEqual(arrayToken.start, 0, 'Expected array token to start at index 0');
+			assert.strictEqual(arrayToken.end, input.length, 'Expected array token to span entire input');
+		});
+
+		test('Should parse an empty array literal', () => {
+			const input = 'const empty = [];';
+			const parser = new TypeScriptBodyParser(input);
+			const result = parser.parseBody();
+
+			// We expect one variable token and one array token.
+			assert.strictEqual(result.length, 2, 'Expected two tokens: one variable and one array literal');
+
+			const variableToken = result.find(token => token.type === 'variable');
+			assert.ok(variableToken, 'Expected a variable token');
+			assert.strictEqual(variableToken.name, 'empty', 'Expected variable name to be "empty"');
+		});
+
+		test('Should parse an empty array literal with whitespace', () => {
+			const input = '[  ]';
+			const parser = new TypeScriptBodyParser(input);
+			const result = parser.parseBody();
+
+			// We expect one top-level token representing the array literal.
+			assert.strictEqual(result.length, 1, 'Expected one top-level token for the array literal');
+
+			const arrayToken = result[0];
+			assert.strictEqual(arrayToken.type, 'array', 'Expected token type "array"');
+			assert.strictEqual(arrayToken.start, 0, 'Expected array token to start at index 0');
+			assert.strictEqual(arrayToken.end, input.length, 'Expected array token to span entire input');
+		});
+	});
+
+
+	suite('TypeScriptObjectParser', () => {
+
+		test('Should parse an empty object literal', async () => {
+			const input = '{}';
+			const pointer = new SourcePointer(input);
+			const tokenizer = new Tokenizer(pointer);
+			const tokens = tokenizer.tokenize();
+			const stream = new TokenStream(tokens);
+			const objParser = new TypeScriptObjectParser(stream, input);
+			const result = objParser.parseObject();
+
+			// Expect one token: the object token spanning the whole input.
+			assert.strictEqual(result.length, 1, 'Expected one object token for an empty object');
+			assert.strictEqual(result[0].type, 'object', 'Token type should be object');
+			assert.strictEqual(result[0].start, 0, 'Object token should start at index 0');
+			assert.strictEqual(result[0].end, input.length, 'Object token should end at the input length');
+		});
+
+		test('Should parse object with a single property with literal value', async () => {
+			// Using identifier literals (e.g. "abc") so that the tokenizer does not split numbers.
+			const input = '{ key: abc }';
+			const pointer = new SourcePointer(input);
+			const tokenizer = new Tokenizer(pointer);
+			const tokens = tokenizer.tokenize();
+			const stream = new TokenStream(tokens);
+			const objParser = new TypeScriptObjectParser(stream, input);
+			const result = objParser.parseObject();
+
+			// Expected tokens:
+			// 0: overall object token
+			// 1: property token for "key"
+			// 2: literal token for the value "abc"
+			assert.strictEqual(result.length, 3, 'Expected 3 tokens for an object with one property');
+			assert.strictEqual(result[0].type, 'object');
+			assert.strictEqual(result[1].type, 'property');
+			assert.strictEqual(result[1].name, 'key');
+			assert.strictEqual(result[2].type, 'literal');
+			assert.strictEqual(result[2].name, 'abc');
+		});
+
+		test('Should parse object with multiple properties', async () => {
+			const input = '{ a: one, b: two }';
+			const pointer = new SourcePointer(input);
+			const tokenizer = new Tokenizer(pointer);
+			const tokens = tokenizer.tokenize();
+			const stream = new TokenStream(tokens);
+			const objParser = new TypeScriptObjectParser(stream, input);
+			const result = objParser.parseObject();
+
+			// Expected tokens:
+			// 0: object token
+			// 1: property token for "a"
+			// 2: literal token for "one"
+			// 3: property token for "b"
+			// 4: literal token for "two"
+			assert.strictEqual(result.length, 5, 'Expected 5 tokens for an object with two properties');
+			assert.strictEqual(result[0].type, 'object');
+			assert.strictEqual(result[1].type, 'property');
+			assert.strictEqual(result[1].name, 'a');
+			assert.strictEqual(result[2].type, 'literal');
+			assert.strictEqual(result[2].name, 'one');
+			assert.strictEqual(result[3].type, 'property');
+			assert.strictEqual(result[3].name, 'b');
+			assert.strictEqual(result[4].type, 'literal');
+			assert.strictEqual(result[4].name, 'two');
+		});
+
+		test('Should parse nested object literal', async () => {
+			const input = '{ outer: { inner: innerVal } }';
+			const pointer = new SourcePointer(input);
+			const tokenizer = new Tokenizer(pointer);
+			const tokens = tokenizer.tokenize();
+			const stream = new TokenStream(tokens);
+			const objParser = new TypeScriptObjectParser(stream, input);
+			const result = objParser.parseObject();
+
+			// Expected tokens:
+			// 0: outer object token (the whole outer object)
+			// 1: property token for "outer"
+			// 2: inner object token (nested object)
+			// 3: property token for "inner"
+			// 4: literal token for "innerVal"
+			assert.strictEqual(result.length, 5, 'Expected 5 tokens for nested object structure');
+			assert.strictEqual(result[0].type, 'object');
+			assert.strictEqual(result[1].type, 'property');
+			assert.strictEqual(result[1].name, 'outer');
+			assert.strictEqual(result[2].type, 'object');
+			assert.strictEqual(result[3].type, 'property');
+			assert.strictEqual(result[3].name, 'inner');
+			assert.strictEqual(result[4].type, 'literal');
+			assert.strictEqual(result[4].name, 'innerVal');
+		});
+
+		test('Should parse object with array literal property', async () => {
+			const input = '{ list: [ one, two, three ] }';
+			const pointer = new SourcePointer(input);
+			const tokenizer = new Tokenizer(pointer);
+			const tokens = tokenizer.tokenize();
+			const stream = new TokenStream(tokens);
+			const objParser = new TypeScriptObjectParser(stream, input);
+			const result = objParser.parseObject();
+
+			// Expected tokens:
+			// 0: object token for the whole object
+			// 1: property token for "list"
+			// 2: array token for the array literal
+			// then literal tokens for each array element ("one", "two", "three")
+			assert.strictEqual(result[0].type, 'object');
+			assert.strictEqual(result[1].type, 'property');
+			assert.strictEqual(result[1].name, 'list');
+			const arrayToken = result.find(t => t.type === 'array');
+			assert.ok(arrayToken, 'Expected an array token for the property value');
+			// Find literal tokens for array elements.
+			const literalTokens = result.filter(t => t.type === 'literal');
+			const literalValues = literalTokens.map(t => t.name);
+			assert.deepStrictEqual(literalValues, ['one', 'two', 'three'], 'Expected literal tokens for array elements');
+		});
+
+		test('Should handle shorthand property without colon', async () => {
+			const input = '{ shorthand }';
+			const pointer = new SourcePointer(input);
+			const tokenizer = new Tokenizer(pointer);
+			const tokens = tokenizer.tokenize();
+			const stream = new TokenStream(tokens);
+			const objParser = new TypeScriptObjectParser(stream, input);
+			const result = objParser.parseObject();
+
+			// Expected tokens: an object token and a property token with name "shorthand".
+			assert.strictEqual(result.length, 2, 'Expected 2 tokens for shorthand property');
+			assert.strictEqual(result[0].type, 'object');
+			assert.strictEqual(result[1].type, 'property');
+			assert.strictEqual(result[1].name, 'shorthand');
+		});
+
+		test('Should return empty tokens if not starting with an object literal', async () => {
+			const input = 'not an object';
+			const pointer = new SourcePointer(input);
+			const tokenizer = new Tokenizer(pointer);
+			const tokens = tokenizer.tokenize();
+			const stream = new TokenStream(tokens);
+			const objParser = new TypeScriptObjectParser(stream, input);
+			const result = objParser.parseObject();
+
+			// Since the first token is not '{', we expect an empty array.
+			assert.strictEqual(result.length, 0, 'Expected no tokens when not starting with "{"');
+		});
+
+		test('Should parse function as property value', async () => {
+			const input = '{ action: function() { return abc; } }';
+			const pointer = new SourcePointer(input);
+			const tokenizer = new Tokenizer(pointer);
+			const tokens = tokenizer.tokenize();
+			const stream = new TokenStream(tokens);
+			const objParser = new TypeScriptObjectParser(stream, input);
+			const result = objParser.parseObject();
+
+			// Expected tokens:
+			// 0: object token
+			// 1: property token for "action"
+			// 2: function token for the function value (with name 'anonymous')
+			assert.strictEqual(result[0].type, 'object');
+			assert.strictEqual(result[1].type, 'property');
+			assert.strictEqual(result[1].name, 'action');
+			const functionToken = result.find(t => t.type === 'function');
+			assert.ok(functionToken, 'Expected a function token for the function property value');
+			assert.strictEqual(functionToken.name, 'anonymous');
+		});
+
+	});
+
+
+
+	suite('TypeScriptObjectParser - Array Literal in Object', () => {
+
+		test('Should parse object with an array literal property', () => {
+			// The input is an object with a property "arr" whose value is an array literal.
+			const input = '{ arr: [ 1, 2, 3 ] }';
+			const pointer = new SourcePointer(input);
+			const tokenizer = new Tokenizer(pointer);
+			const tokens = tokenizer.tokenize();
+			const stream = new TokenStream(tokens);
+			const objParser = new TypeScriptObjectParser(stream, input);
+			const result = objParser.parseObject();
+
+			// Expected tokens:
+			// - Token 0: overall object token.
+			// - Token 1: property token for "arr".
+			// - Somewhere in the list, an array token representing [ 1, 2, 3 ].
+			const propertyToken = result.find(token => token.type === 'property' && token.name === 'arr');
+			assert.ok(propertyToken, 'Expected a property token with name "arr"');
+
+			const arrayToken = result.find(token => token.type === 'array');
+			assert.ok(arrayToken, 'Expected an array token for the property "arr" value');
+
+			// Verify that the array token boundaries match the positions of '[' and ']' in the input.
+			const expectedStart = input.indexOf('[');
+			const expectedEnd = input.lastIndexOf(']') + 1;
+			assert.strictEqual(arrayToken.start, expectedStart, 'Array token should start at the first "[" of the array literal');
+			assert.strictEqual(arrayToken.end, expectedEnd, 'Array token should end after the last "]" of the array literal');
+		});
+
+		test('Should parse nested array literal in an object property', () => {
+			// The input is an object with a property "matrix" that holds a nested array.
+			const input = '{ matrix: [ [ 1, 2 ], [ 3, 4 ] ] }';
+			const pointer = new SourcePointer(input);
+			const tokenizer = new Tokenizer(pointer);
+			const tokens = tokenizer.tokenize();
+			const stream = new TokenStream(tokens);
+			const objParser = new TypeScriptObjectParser(stream, input);
+			const result = objParser.parseObject();
+
+			// Verify that the property token for "matrix" exists.
+			const propertyToken = result.find(token => token.type === 'property' && token.name === 'matrix');
+			assert.ok(propertyToken, 'Expected a property token with name "matrix"');
+
+			// The outer array token for the value of "matrix" should be present.
+			const outerArrayToken = result.find(token => token.type === 'array');
+			assert.ok(outerArrayToken, 'Expected an outer array token for the value of "matrix"');
+
+			// Since the outer array contains nested arrays, we expect to see two array tokens:
+			// one for the outer array and one for one of the nested arrays.
+			const arrayTokens = result.filter(token => token.type === 'array');
+			assert.strictEqual(arrayTokens.length, 2, 'Expected two array tokens: one for the outer array and one for a nested array');
+
+			// Check that the nested array token starts at a position greater than the outer array token.
+			const nestedArrayToken = arrayTokens.find(token => token.start !== outerArrayToken.start);
+			assert.ok(nestedArrayToken, 'Expected a nested array token for the inner array');
+		});
+
+		test('Should parse object with an array literal property containing objects', () => {
+			// The input is an object whose property "list" is an array containing two object literals.
+			const input = '{ list: [ { a: b }, { c: d } ] }';
+			const pointer = new SourcePointer(input);
+			const tokenizer = new Tokenizer(pointer);
+			const tokens = tokenizer.tokenize();
+			const stream = new TokenStream(tokens);
+			const objParser = new TypeScriptObjectParser(stream, input);
+			const result = objParser.parseObject();
+
+			// Verify that the property token for "list" exists.
+			const propertyToken = result.find(token => token.type === 'property' && token.name === 'list');
+			assert.ok(propertyToken, 'Expected a property token with name "list"');
+
+			// Verify that an array token exists for the value of "list".
+			const arrayToken = result.find(token => token.type === 'array');
+			assert.ok(arrayToken, 'Expected an array token for the "list" property value');
+
+			// Within that array, the parser should have detected object tokens.
+			// (Depending on your implementation, it may only push the top-level object token for each object literal.)
+			const objectTokensInArray = result.filter(token =>
+				token.type === 'object' && token.start > arrayToken.start
+			);
+			assert.strictEqual(objectTokensInArray.length, 2, 'Expected two object tokens for the objects inside the array literal');
+		});
+
+	});
+
+
+
+
+	suite('TypeScriptVariableParser', () => {
+
+		test('Should parse variable with literal initializer', async () => {
+			const input = 'const x = 123;';
+			const pointer = new SourcePointer(input);
+			const tokenizer = new Tokenizer(pointer);
+			const tokens = tokenizer.tokenize();
+			const varParser = new TypeScriptVariableParser(input, tokens);
+			const result = varParser.parseVariable();
+
+			// Expect the keyword to be "const", the variable name "x", and the initializer to be a literal "123"
+			assert.strictEqual(result.variableKeyword, 'const', 'Variable keyword should be "const"');
+			assert.strictEqual(result.variableName, 'x', 'Variable name should be "x"');
+			assert.ok(result.initializer, 'Initializer should be present');
+			assert.strictEqual(result.initializer?.type, 'literal', 'Initializer type should be literal');
+			assert.strictEqual(result.initializer?.name, '123', 'Initializer value should be "123"');
+		});
+
+		test('Should parse variable with object initializer', async () => {
+			const input = 'let obj = { a: b };';
+			const pointer = new SourcePointer(input);
+			const tokenizer = new Tokenizer(pointer);
+			const tokens = tokenizer.tokenize();
+			const varParser = new TypeScriptVariableParser(input, tokens);
+			const result = varParser.parseVariable();
+
+			// Expect the keyword to be "let", the variable name "obj",
+			// and the initializer to be an object literal spanning from '{' to '}'
+			assert.strictEqual(result.variableKeyword, 'let', 'Variable keyword should be "let"');
+			assert.strictEqual(result.variableName, 'obj', 'Variable name should be "obj"');
+			assert.ok(result.initializer, 'Initializer should be present');
+			assert.strictEqual(result.initializer?.type, 'object', 'Initializer should be an object token');
+
+			// Optionally verify that the initializer text matches the object literal
+			const initText = input.substring(result.initializer!.start, result.initializer!.end);
+			assert.strictEqual(initText.trim(), '{ a: b }', 'Initializer object text should match');
+		});
+
+		test('Should parse variable with array initializer', async () => {
+			const input = 'var arr = [ one, two, three ];';
+			const pointer = new SourcePointer(input);
+			const tokenizer = new Tokenizer(pointer);
+			const tokens = tokenizer.tokenize();
+			const varParser = new TypeScriptVariableParser(input, tokens);
+			const result = varParser.parseVariable();
+
+			// Expect the keyword "var", variable name "arr",
+			// and an initializer that is an array token.
+			assert.strictEqual(result.variableKeyword, 'var', 'Variable keyword should be "var"');
+			assert.strictEqual(result.variableName, 'arr', 'Variable name should be "arr"');
+			assert.ok(result.initializer, 'Initializer should be present');
+			assert.strictEqual(result.initializer?.type, 'array', 'Initializer should be an array token');
+
+			const initText = input.substring(result.initializer!.start, result.initializer!.end);
+			assert.strictEqual(initText.trim(), '[ one, two, three ]', 'Initializer array text should match');
+		});
+
+		test('Should parse variable without initializer', async () => {
+			const input = 'let y;';
+			const pointer = new SourcePointer(input);
+			const tokenizer = new Tokenizer(pointer);
+			const tokens = tokenizer.tokenize();
+			const varParser = new TypeScriptVariableParser(input, tokens);
+			const result = varParser.parseVariable();
+
+			// Expect the keyword "let" and variable name "y" with no initializer.
+			assert.strictEqual(result.variableKeyword, 'let', 'Variable keyword should be "let"');
+			assert.strictEqual(result.variableName, 'y', 'Variable name should be "y"');
+			assert.strictEqual(result.initializer, undefined, 'Initializer should be undefined when not provided');
+		});
+
+		test('Should handle extra whitespace in variable declaration', async () => {
+			const input = "  const   z   =   'hello'  ; ";
+			const pointer = new SourcePointer(input);
+			const tokenizer = new Tokenizer(pointer);
+			const tokens = tokenizer.tokenize();
+			const varParser = new TypeScriptVariableParser(input, tokens);
+			const result = varParser.parseVariable();
+
+			// Expect the keyword "const", variable name "z",
+			// and a literal initializer with the value "'hello'"
+			assert.strictEqual(result.variableKeyword, 'const', 'Variable keyword should be "const"');
+			assert.strictEqual(result.variableName, 'z', 'Variable name should be "z"');
+			assert.ok(result.initializer, 'Initializer should be present');
+			assert.strictEqual(result.initializer?.type, 'literal', 'Initializer should be a literal token');
+			assert.strictEqual(result.initializer?.name, "'hello'", 'Initializer value should be \'hello\'');
+		});
+
+	});
+
+
+	suite('TypeScriptArrayParser', () => {
+
+		test('Should parse an empty array literal', () => {
+			const input = '[]';
+			const pointer = new SourcePointer(input);
+			const tokenizer = new Tokenizer(pointer);
+			const tokens = tokenizer.tokenize();
+			const stream = new TokenStream(tokens);
+			const arrayParser = new TypeScriptArrayParser(stream, input);
+			const result = arrayParser.parseArray();
+
+			// Expect one token: the top-level array token covering the entire input.
+			assert.strictEqual(result.length, 1, 'Expected one token for an empty array literal');
+			assert.strictEqual(result[0].type, 'array', 'The token type should be "array"');
+			assert.strictEqual(result[0].start, 0, 'The array token should start at index 0');
+			assert.strictEqual(result[0].end, input.length, 'The array token should end at the input length');
+		});
+
+		test('Should parse an array literal with literal values', () => {
+			const input = '[ 1, 2, 3 ]';
+			const pointer = new SourcePointer(input);
+			const tokenizer = new Tokenizer(pointer);
+			const tokens = tokenizer.tokenize();
+			const stream = new TokenStream(tokens);
+			const arrayParser = new TypeScriptArrayParser(stream, input);
+			const result = arrayParser.parseArray();
+
+			// Expected tokens:
+			// - One token for the outer array literal.
+			// - Three literal tokens for the numbers "1", "2", and "3".
+			// Total expected tokens = 4.
+			assert.strictEqual(result.length, 4, 'Expected 4 tokens: one array token and three literal tokens');
+			assert.strictEqual(result[0].type, 'array', 'The first token should be an array token');
+
+			// Collect literal tokens (the tokens after the top-level array token)
+			const literalTokens = result.slice(1);
+			const literalValues = literalTokens.map(token => token.name);
+			assert.deepStrictEqual(literalValues, ['1', '2', '3'], 'Expected literal values "1", "2", and "3"');
+		});
+
+		test('Should parse an array literal with a nested array', () => {
+			const input = '[ 1, [ 2, 3 ], 4 ]';
+			const pointer = new SourcePointer(input);
+			const tokenizer = new Tokenizer(pointer);
+			const tokens = tokenizer.tokenize();
+			const stream = new TokenStream(tokens);
+			const arrayParser = new TypeScriptArrayParser(stream, input);
+			const result = arrayParser.parseArray();
+
+			// Expected tokens:
+			// - Outer array token.
+			// - Literal token for "1".
+			// - Tokens from the nested array: a nested array token and its literal tokens ("2" and "3").
+			// - Literal token for "4".
+			// Total expected tokens = 1 (outer array) + 1 ("1") + 3 (nested array) + 1 ("4") = 6 tokens.
+			assert.strictEqual(result.length, 6, 'Expected 6 tokens for an array with a nested array');
+
+			// Verify that the nested array token exists (its start should be different from the outer array token)
+			const nestedArrayToken = result.find(token => token.type === 'array' && token.start !== result[0].start);
+			assert.ok(nestedArrayToken, 'Expected a nested array token');
+
+			// Check that the nested array includes the literal tokens "2" and "3"
+			const literalNames = result.filter(token => token.type === 'literal').map(token => token.name);
+			assert.ok(literalNames.includes('2'), 'Expected literal "2" in the nested array');
+			assert.ok(literalNames.includes('3'), 'Expected literal "3" in the nested array');
+		});
+
+		test('Should parse an array literal with a nested object', () => {
+			const input = '[ { a: b } ]';
+			const pointer = new SourcePointer(input);
+			const tokenizer = new Tokenizer(pointer);
+			const tokens = tokenizer.tokenize();
+			const stream = new TokenStream(tokens);
+			const arrayParser = new TypeScriptArrayParser(stream, input);
+			const result = arrayParser.parseArray();
+
+			// Expected tokens:
+			// - Top-level array token.
+			// - Tokens returned by the object parser (which should include an object token).
+			assert.ok(result.length > 1, 'Expected more than one token for an array with an object literal');
+			const objectToken = result.find(token => token.type === 'object');
+			assert.ok(objectToken, 'Expected an object token within the array literal');
+		});
+
+		test('Should parse an array literal with a function expression', () => {
+			const input = '[ function() { return 1; } ]';
+			const pointer = new SourcePointer(input);
+			const tokenizer = new Tokenizer(pointer);
+			const tokens = tokenizer.tokenize();
+			const stream = new TokenStream(tokens);
+			const arrayParser = new TypeScriptArrayParser(stream, input);
+			const result = arrayParser.parseArray();
+
+			// Expected tokens:
+			// - Top-level array token.
+			// - Function token for the function expression.
+			const functionToken = result.find(token => token.type === 'function');
+			assert.ok(functionToken, 'Expected a function token within the array literal');
+			assert.strictEqual(functionToken.name, 'anonymous', 'Function token should have the name "anonymous"');
+		});
+
+		test('Should parse an array literal with mixed element types', () => {
+			const input = '[ 1, { a: b }, [ 2, 3 ], function() {} ]';
+			const pointer = new SourcePointer(input);
+			const tokenizer = new Tokenizer(pointer);
+			const tokens = tokenizer.tokenize();
+			const stream = new TokenStream(tokens);
+			const arrayParser = new TypeScriptArrayParser(stream, input);
+			const result = arrayParser.parseArray();
+
+			// Expected tokens include:
+			// - Outer array token.
+			// - Literal token for "1".
+			// - Tokens for the nested object.
+			// - Tokens for the nested array.
+			// - Function token for the function expression.
+			assert.ok(result.length > 0, 'Expected tokens from an array with mixed elements');
+
+			// Check for literal "1"
+			const literalOne = result.find(token => token.type === 'literal' && token.name === '1');
+			assert.ok(literalOne, 'Expected a literal token "1"');
+
+			// Check for nested object token
+			const objectToken = result.find(token => token.type === 'object');
+			assert.ok(objectToken, 'Expected an object token for the nested object');
+
+			// Check for nested array token (not the outer array token)
+			const nestedArrayToken = result.find(token => token.type === 'array' && token.start !== result[0].start);
+			assert.ok(nestedArrayToken, 'Expected a nested array token for the inner array');
+
+			// Check for function token
+			const functionToken = result.find(token => token.type === 'function');
+			assert.ok(functionToken, 'Expected a function token for the function expression');
+		});
+
+		test('Should return empty tokens when input is not an array literal', () => {
+			const input = 'not an array';
+			const pointer = new SourcePointer(input);
+			const tokenizer = new Tokenizer(pointer);
+			const tokens = tokenizer.tokenize();
+			const stream = new TokenStream(tokens);
+			const arrayParser = new TypeScriptArrayParser(stream, input);
+			const result = arrayParser.parseArray();
+
+			// Since the input does not start with '[', we expect no tokens to be returned.
+			assert.strictEqual(result.length, 0, 'Expected no tokens when input is not an array literal');
+		});
+
+	});
+
+
+
+	suite('TypeScriptTypeParser', () => {
+
+		test('should parse a simple primary type', () => {
+			const input = 'number';
+			const parser = new TypeScriptTypeParser(input);
+			const result: ParsedTypeToken = parser.parseType();
+
+			// Expect a primary type token with name "number"
+			assert.strictEqual(result.kind, 'primary', 'Expected token kind to be "primary"');
+			assert.strictEqual(result.name, 'number', 'Expected type name to be "number"');
+			assert.strictEqual(result.start, 0, 'Expected start index to be 0');
+			assert.strictEqual(result.end, input.length, 'Expected end index to be the input length');
+		});
+
+		test('should parse a union type', () => {
+			const input = 'A | B | C';
+			const parser = new TypeScriptTypeParser(input);
+			const result: ParsedTypeToken = parser.parseType();
+
+			// Expect a union type token with three primary subtypes: "A", "B", "C"
+			assert.strictEqual(result.kind, 'union', 'Expected token kind to be "union"');
+			assert.ok(result.subTypes, 'Expected union token to have subTypes');
+			assert.strictEqual(result.subTypes!.length, 3, 'Expected three subtypes in the union');
+
+			assert.strictEqual(result.subTypes![0].kind, 'primary', 'Expected first subtype to be primary');
+			assert.strictEqual(result.subTypes![0].name, 'A', 'Expected first subtype name to be "A"');
+			assert.strictEqual(result.subTypes![1].kind, 'primary', 'Expected second subtype to be primary');
+			assert.strictEqual(result.subTypes![1].name, 'B', 'Expected second subtype name to be "B"');
+			assert.strictEqual(result.subTypes![2].kind, 'primary', 'Expected third subtype to be primary');
+			assert.strictEqual(result.subTypes![2].name, 'C', 'Expected third subtype name to be "C"');
+		});
+
+		test('should parse a generic type', () => {
+			const input = 'Array<string>';
+			const parser = new TypeScriptTypeParser(input);
+			const result: ParsedTypeToken = parser.parseType();
+
+			// Expect a primary type token with generic arguments
+			assert.strictEqual(result.kind, 'primary', 'Expected token kind to be "primary"');
+			assert.strictEqual(result.name, 'Array', 'Expected type name to be "Array"');
+			assert.ok(result.genericArguments, 'Expected generic arguments to be present');
+			assert.strictEqual(result.genericArguments!.length, 1, 'Expected one generic argument');
+
+			const genericArg = result.genericArguments![0];
+			assert.strictEqual(genericArg.kind, 'primary', 'Expected generic argument to be primary');
+			assert.strictEqual(genericArg.name, 'string', 'Expected generic argument name to be "string"');
+		});
+
+		test('should parse nested generic types', () => {
+			const input = 'Map<string, Array<number>>';
+			const parser = new TypeScriptTypeParser(input);
+			const result: ParsedTypeToken = parser.parseType();
+
+			// Expect a primary type "Map" with two generic arguments
+			assert.strictEqual(result.kind, 'primary', 'Expected token kind to be "primary"');
+			assert.strictEqual(result.name, 'Map', 'Expected type name to be "Map"');
+			assert.ok(result.genericArguments, 'Expected generic arguments to be present');
+			assert.strictEqual(result.genericArguments!.length, 2, 'Expected two generic arguments');
+
+			// First generic argument should be "string"
+			const firstArg = result.genericArguments![0];
+			assert.strictEqual(firstArg.kind, 'primary', 'Expected first generic argument to be primary');
+			assert.strictEqual(firstArg.name, 'string', 'Expected first generic argument to be "string"');
+
+			// Second generic argument should be "Array<number>"
+			const secondArg = result.genericArguments![1];
+			assert.strictEqual(secondArg.kind, 'primary', 'Expected second generic argument to be primary');
+			assert.strictEqual(secondArg.name, 'Array', 'Expected second generic argument name to be "Array"');
+			assert.ok(secondArg.genericArguments, 'Expected nested generic arguments in second argument');
+			assert.strictEqual(secondArg.genericArguments!.length, 1, 'Expected one nested generic argument');
+			const nestedArg = secondArg.genericArguments![0];
+			assert.strictEqual(nestedArg.kind, 'primary', 'Expected nested generic argument to be primary');
+			assert.strictEqual(nestedArg.name, 'number', 'Expected nested generic argument name to be "number"');
+		});
+
+		test('should parse a parenthesized type', () => {
+			const input = '(A | B)';
+			const parser = new TypeScriptTypeParser(input);
+			const result: ParsedTypeToken = parser.parseType();
+
+			// Expect a parenthesized token whose inner type is a union of "A" and "B"
+			assert.strictEqual(result.kind, 'parenthesized', 'Expected token kind to be "parenthesized"');
+			assert.ok(result.subTypes && result.subTypes!.length === 1, 'Expected one inner type in parenthesized token');
+
+			const innerType = result.subTypes![0];
+			assert.strictEqual(innerType.kind, 'union', 'Expected inner type to be a union');
+			assert.ok(innerType.subTypes, 'Expected union inner type to have subTypes');
+			assert.strictEqual(innerType.subTypes!.length, 2, 'Expected two subtypes in the union');
+			assert.strictEqual(innerType.subTypes![0].name, 'A', 'Expected first subtype to be "A"');
+			assert.strictEqual(innerType.subTypes![1].name, 'B', 'Expected second subtype to be "B"');
+		});
+
+		test('should parse a complex type with whitespace and newlines', () => {
+			const input = `
+	  Promise <
+		 Result < A | B ,
+		 Error
+		 >
+	  >
+	`;
+			const trimmedInput = input.trim();
+			const parser = new TypeScriptTypeParser(trimmedInput);
+			const result: ParsedTypeToken = parser.parseType();
+
+			// Expect a primary type "Promise" with one generic argument "Result< A | B, Error >"
+			assert.strictEqual(result.kind, 'primary', 'Expected token kind to be "primary"');
+			assert.strictEqual(result.name, 'Promise', 'Expected type name to be "Promise"');
+			assert.ok(result.genericArguments, 'Expected generic arguments to be present');
+			assert.strictEqual(result.genericArguments!.length, 1, 'Expected one generic argument for Promise');
+
+			const resultArg = result.genericArguments![0];
+			assert.strictEqual(resultArg.kind, 'primary', 'Expected generic argument to be primary');
+			assert.strictEqual(resultArg.name, 'Result', 'Expected generic argument name to be "Result"');
+			assert.ok(resultArg.genericArguments, 'Expected nested generic arguments in Result');
+			assert.strictEqual(resultArg.genericArguments!.length, 2, 'Expected two generic arguments in Result');
+
+			// First generic argument of Result should be a union "A | B"
+			const unionArg = resultArg.genericArguments![0];
+			assert.strictEqual(unionArg.kind, 'union', 'Expected first generic argument of Result to be a union');
+			assert.ok(unionArg.subTypes, 'Expected union to have subTypes');
+			assert.strictEqual(unionArg.subTypes!.length, 2, 'Expected two subtypes in the union');
+			assert.strictEqual(unionArg.subTypes![0].name, 'A', 'Expected first union subtype to be "A"');
+			assert.strictEqual(unionArg.subTypes![1].name, 'B', 'Expected second union subtype to be "B"');
+
+			// Second generic argument of Result should be "Error"
+			const errorArg = resultArg.genericArguments![1];
+			assert.strictEqual(errorArg.kind, 'primary', 'Expected second generic argument of Result to be primary');
+			assert.strictEqual(errorArg.name, 'Error', 'Expected second generic argument to be "Error"');
+		});
+
+	});
+
 });
 
 
 
-suite('TypeScript Object Builder Tests', () => {
-    vscode.window.showInformationMessage('Starting TypeScript Object Builder tests.');
 
-    suite('Property Finding Tests', () => {
-        test('Should find property at root level', () => {
-            const input = `{
-    rootProp: 'value',
-    nested: {
-        rootProp: 'wrong'
-    }
-}`;
-            let foundValue: string | undefined;
-            const modifications: CodeModification[] = [];
+suite('TypeScriptCodeBuilder - Object Modifications', () => {
 
-            const builder = new TypeScriptObjectBuilder(input, 0, input.length, modifications);
-            builder.findProperty('rootProp', {
-                onFound: (value) => {
-                    foundValue = value;
-                }
-            });
+	test('Should update property values in a simple object literal', async () => {
+		const input = `const location = { id: 'village', name: 'Old Village' };`;
+		const expected = `const location = { id: 'new-village', name: 'New Village' };`;
 
-            assert.strictEqual(foundValue, "'value'");
-        });
+		const builder = new TypeScriptCodeBuilder();
+		builder.parseText(input);
+		// Locate the object literal for the variable "location"
+		builder.findObject('location', {
+			onFound: (objectBuilder) => {
+				// Replace the value of the property "id"
+				objectBuilder.setPropertyValue('id', "'new-village'");
+				// Replace the value of the property "name"
+				objectBuilder.setPropertyValue('name', "'New Village'");
+			},
+			onNotFound: () => {
+				assert.fail('Expected to find object literal for variable "location"');
+			}
+		});
 
-        test('Should not find nested property with same name', () => {
-            const input = `{
-    outer: {
-        target: 'wrong'
-    },
-    other: 'value'
-}`;
-            let notFoundCalled = false;
+		const result = await builder.toString();
+		assert.strictEqual(result, expected);
+	});
 
-            const builder = new TypeScriptObjectBuilder(input, 0, input.length, []);
-            builder.findProperty('target', {
-                onFound: () => {
-                    assert.fail('Should not find nested property');
-                },
-                onNotFound: () => {
-                    notFoundCalled = true;
-                }
-            });
+	test('Should leave code unchanged if no matching property is found', async () => {
+		const input = `const user = { username: 'admin' };`;
+		// Expect the original text because no edit is scheduled
+		const expected = input;
 
-            assert.strictEqual(notFoundCalled, true);
-        });
+		const builder = new TypeScriptCodeBuilder();
+		builder.parseText(input);
+		builder.findObject('user', {
+			onFound: (objectBuilder) => {
+				// Attempt to change a property that does not exist.
+				objectBuilder.setPropertyValue('password', "'secret'");
+			}
+		});
 
-        test('Should find property with string containing object-like content', () => {
-            const input = `{
-    prop: 'value: { nested: true }',
-    actual: 'correct'
-}`;
-            let foundValue: string | undefined;
-
-            const builder = new TypeScriptObjectBuilder(input, 0, input.length, []);
-            builder.findProperty('actual', {
-                onFound: (value) => {
-                    foundValue = value;
-                }
-            });
-
-            assert.strictEqual(foundValue, "'correct'");
-        });
-
-        test('Should find property after array with nested objects', () => {
-            const input = `{
-    arr: [
-        { prop: 'skip' },
-        { prop: 'skip2' }
-    ],
-    target: 'found'
-}`;
-            let foundValue: string | undefined;
-
-            const builder = new TypeScriptObjectBuilder(input, 0, input.length, []);
-            builder.findProperty('target', {
-                onFound: (value) => {
-                    foundValue = value;
-                }
-            });
-
-            assert.strictEqual(foundValue, "'found'");
-        });
-    });
-
-    suite('Array Finding Tests', () => {
-        test('Should find array at root level', () => {
-            const input = `{
-    rootArray: [1, 2, 3],
-    nested: {
-        rootArray: [4, 5, 6]
-    }
-}`;
-            let arrayFound = false;
-
-            const builder = new TypeScriptObjectBuilder(input, 0, input.length, []);
-            builder.findArray('rootArray', {
-                onFound: () => {
-                    arrayFound = true;
-                }
-            });
-
-            assert.strictEqual(arrayFound, true);
-        });
-
-        test('Should not find nested array with same name', () => {
-            const input = `{
-    outer: {
-        targetArray: [1, 2, 3]
-    }
-}`;
-            let notFoundCalled = false;
-
-            const builder = new TypeScriptObjectBuilder(input, 0, input.length, []);
-            builder.findArray('targetArray', {
-                onFound: () => {
-                    assert.fail('Should not find nested array');
-                },
-                onNotFound: () => {
-                    notFoundCalled = true;
-                }
-            });
-
-            assert.strictEqual(notFoundCalled, true);
-        });
-
-        test('Should find array with objects containing similar property names', () => {
-            const input = `{
-    items: [
-        { name: 'first', items: [1, 2] },
-        { name: 'second', items: [3, 4] }
-    ],
-    items2: ['correct']
-}`;
-            let foundCorrectArray = false;
-
-            const builder = new TypeScriptObjectBuilder(input, 0, input.length, []);
-            builder.findArray('items2', {
-                onFound: (items) => {
-                    foundCorrectArray = true;
-                }
-            });
-
-            assert.strictEqual(foundCorrectArray, true);
-        });
-    });
-
-    suite('Property Modification Tests', () => {
-        test('Should modify root level property value', () => {
-            const input = `{
-    target: 'old',
-    nested: {
-        target: 'wrong'
-    }
-}`;
-            const modifications: CodeModification[] = [];
-            const builder = new TypeScriptObjectBuilder(input, 0, input.length, modifications);
-
-            builder.setPropertyValue('target', "'new'");
-
-            assert.strictEqual(modifications.length, 1);
-            assert.strictEqual(modifications[0].replacement, "'new'");
-        });
-
-        test('Should add new property at root level', () => {
-            const input = `{
-    existing: 'value'
-}`;
-            const modifications: CodeModification[] = [];
-            const builder = new TypeScriptObjectBuilder(input, 0, input.length, modifications);
-
-            builder.addProperty('newProp', "'newValue'");
-
-            assert.strictEqual(modifications.length, 1);
-            const result = input.slice(0, modifications[0].start) +
-                modifications[0].replacement +
-                input.slice(modifications[0].end);
-            assert.match(result, /newProp: 'newValue'/);
-        });
-    });
-
-    suite('Complex Scenarios Tests', () => {
-        test('Should handle properties with complex values', () => {
-            const input = `{
-    prop: \`template \${with} \${expressions}\`,
-    nested: {
-        prop: 'wrong'
-    }
-}`;
-            let foundValue: string | undefined;
-
-            const builder = new TypeScriptObjectBuilder(input, 0, input.length, []);
-            builder.findProperty('prop', {
-                onFound: (value) => {
-                    foundValue = value;
-                }
-            });
-
-            assert.strictEqual(foundValue?.includes('template'), true);
-        });
-
-        test('Should handle multiple levels of nesting with same names', () => {
-            const input = `{
-    level1: {
-        target: 'wrong',
-        level2: {
-            target: 'wrong2'
-        }
-    },
-    target: 'correct'
-}`;
-            let foundValue: string | undefined;
-
-            const builder = new TypeScriptObjectBuilder(input, 0, input.length, []);
-            builder.findProperty('target', {
-                onFound: (value) => {
-                    foundValue = value;
-                }
-            });
-
-            assert.strictEqual(foundValue, "'correct'");
-        });
-
-        test('Should handle escaped quotes in string values', () => {
-            const input = `{
-    prop: 'value with \\'quotes\\'',
-    nested: {
-        prop: 'wrong'
-    }
-}`;
-            let foundValue: string | undefined;
-
-            const builder = new TypeScriptObjectBuilder(input, 0, input.length, []);
-            builder.findProperty('prop', {
-                onFound: (value) => {
-                    foundValue = value;
-                }
-            });
-
-            assert.strictEqual(foundValue?.includes('quotes'), true);
-        });
-
-        test('Should handle properties with similar names', () => {
-            const input = `{
-    longPropertyName: 'wrong',
-    longProperty: 'correct',
-    nested: {
-        longProperty: 'wrong'
-    }
-}`;
-            let foundValue: string | undefined;
-
-            const builder = new TypeScriptObjectBuilder(input, 0, input.length, []);
-            builder.findProperty('longProperty', {
-                onFound: (value) => {
-                    foundValue = value;
-                }
-            });
-
-            assert.strictEqual(foundValue, "'correct'");
-        });
-    });
-
-    suite('Error Handling Tests', () => {
-        test('Should handle malformed object structure', () => {
-            const input = `{
-    prop: 'value',
-    broken: {
-        nested: true
-    // missing closing brace
-}`;
-            let errorCalled = false;
-
-            const builder = new TypeScriptObjectBuilder(input, 0, input.length, []);
-            builder.findArray('broken', {
-                onFound: () => {
-                    assert.fail('Should not find array in malformed object');
-                },
-                onError: (error) => {
-                    errorCalled = true;
-                    assert.ok(error instanceof Error);
-                }
-            });
-
-            assert.strictEqual(errorCalled, true);
-        });
-
-        test('Should handle property with malformed array value', () => {
-            const input = `{
-    prop: 'value',
-    array: [
-        1, 2, 3
-    // missing closing bracket
-}`;
-            let errorCalled = false;
-
-            const builder = new TypeScriptObjectBuilder(input, 0, input.length, []);
-            builder.findArray('array', {
-                onFound: () => {
-                    assert.fail('Should not find malformed array');
-                },
-                onError: (error) => {
-                    errorCalled = true;
-                    assert.ok(error instanceof Error);
-                }
-            });
-
-            assert.strictEqual(errorCalled, true);
-        });
-    });
+		const result = await builder.toString();
+		assert.strictEqual(result, expected);
+	});
 });
 
+/**
+ * Suite of tests for modifying nested array literals.
+ */
+suite('TypeScriptCodeBuilder - Array Modifications', () => {
 
-
-
-suite('TypeScript Code Builder findObject Tests', () => {
-    vscode.window.showInformationMessage('Starting findObject specific tests.');
-
-    test('Should find object with const declaration', async () => {
-        const input = `
-const myObject = {
-    id: 'test'
-};`;
-        let foundCalled = false;
-
-        const builder = new TypeScriptCodeBuilder();
-        builder.parseText(input);
-
-        builder.findObject('myObject', {
-            onFound: (objectBuilder) => {
-                foundCalled = true;
-            }
-        });
-
-        assert.strictEqual(foundCalled, true);
-    });
-
-    test('Should find object with export const declaration', async () => {
-        const input = `
-export const myObject = {
-    id: 'test'
-};`;
-        let foundCalled = false;
-
-        const builder = new TypeScriptCodeBuilder();
-        builder.parseText(input);
-
-        builder.findObject('myObject', {
-            onFound: (objectBuilder) => {
-                foundCalled = true;
-            }
-        });
-
-        assert.strictEqual(foundCalled, true);
-    });
-
-    test('Should not find nested object with same name', async () => {
-        const input = `
-const parentObject = {
-    myObject: {
-        id: 'test'
-    }
-};`;
-        let notFoundCalled = false;
-
-        const builder = new TypeScriptCodeBuilder();
-        builder.parseText(input);
-
-        builder.findObject('myObject', {
-            onFound: () => {
-                assert.fail('Should not find nested object');
-            },
-            onNotFound: () => {
-                notFoundCalled = true;
-            }
-        });
-
-        assert.strictEqual(notFoundCalled, true);
-    });
-
-    test('Should find first level object when same name exists in nested context', async () => {
-        const input = `
-const myObject = {
-    id: 'root'
+	test('Should update object items inside an array literal', async () => {
+		const input = `
+const location = {
+  sublocations: [
+	{ id: 'market' },
+	{ id: 'church' }
+  ]
 };
-
-const parent = {
-    myObject: {
-        id: 'nested'
-    }
-};`;
-        let foundId: string | undefined;
-
-        const builder = new TypeScriptCodeBuilder();
-        builder.parseText(input);
-
-        builder.findObject('myObject', {
-            onFound: (objectBuilder) => {
-                objectBuilder.findProperty('id', {
-                    onFound: (value) => {
-                        foundId = value;
-                    }
-                });
-            }
-        });
-
-        assert.strictEqual(foundId, "'root'");
-    });
-
-    test('Should handle multiple braces before target object', async () => {
-        const input = `
-const obj1 = {
-    nested: {
-        deep: {
-            value: true
-        }
-    }
+`;
+		const expected = `
+const location = {
+  sublocations: [
+	{ id: 'new-market' },
+	{ id: 'new-church' }
+  ]
 };
+`;
+		const builder = new TypeScriptCodeBuilder();
+		builder.parseText(input);
+		builder.findObject('location', {
+			onFound: (objectBuilder) => {
+				// Find the array literal assigned to property "sublocations"
+				objectBuilder.findArray('sublocations', {
+					onFound: (arrayBuilder) => {
+						// Get the object builders for each item in the array
+						const items = arrayBuilder.getItems();
+						items.forEach((itemBuilder, index) => {
+							// For the first item set id to 'new-market'
+							// For the second item set id to 'new-church'
+							itemBuilder.setPropertyValue('id', index === 0 ? "'new-market'" : "'new-church'");
+						});
+					}
+				});
+			}
+		});
 
-const targetObject = {
-    id: 'found'
-};`;
-        let foundCalled = false;
+		const result = await builder.toString();
+		assert.strictEqual(result, expected);
+	});
 
-        const builder = new TypeScriptCodeBuilder();
-        builder.parseText(input);
+	test('Should return the correct number of items from an array literal', () => {
+		const input = `
+const data = { items: [
+  { value: 1 },
+  { value: 2 },
+  { value: 3 }
+] };
+`;
+		const builder = new TypeScriptCodeBuilder();
+		builder.parseText(input);
+		let itemsCount = 0;
+		builder.findObject('data', {
+			onFound: (objectBuilder) => {
+				objectBuilder.findArray('items', {
+					onFound: (arrayBuilder) => {
+						const items = arrayBuilder.getItems();
+						itemsCount = items.length;
+					}
+				});
+			}
+		});
+		// We expect three object items in the array literal
+		assert.strictEqual(itemsCount, 3, 'Expected three object items in the array literal');
+	});
+});
 
-        builder.findObject('targetObject', {
-            onFound: (objectBuilder) => {
-                foundCalled = true;
-            }
-        });
+/**
+ * Suite to test that no modifications results in the original code.
+ */
+suite('TypeScriptCodeBuilder - No Modification', () => {
 
-        assert.strictEqual(foundCalled, true);
-    });
-
-    test('Should ignore object name in string literals', async () => {
-        const input = `
-const str = "const myObject = {}";
-const myObject = {
-    id: 'real'
-};`;
-        let foundId: string | undefined;
-
-        const builder = new TypeScriptCodeBuilder();
-        builder.parseText(input);
-
-        builder.findObject('myObject', {
-            onFound: (objectBuilder) => {
-                objectBuilder.findProperty('id', {
-                    onFound: (value) => {
-                        foundId = value;
-                    }
-                });
-            }
-        });
-
-        assert.strictEqual(foundId, "'real'");
-    });
-
-    test('Should handle nested arrays with objects', async () => {
-        const input = `
-const items = [
-    { id: '1' },
-    { myObject: { id: 'nested' } }
-];
-
-const myObject = {
-    id: 'root'
-};`;
-        let foundId: string | undefined;
-
-        const builder = new TypeScriptCodeBuilder();
-        builder.parseText(input);
-
-        builder.findObject('myObject', {
-            onFound: (objectBuilder) => {
-                objectBuilder.findProperty('id', {
-                    onFound: (value) => {
-                        foundId = value;
-                    }
-                });
-            }
-        });
-
-        assert.strictEqual(foundId, "'root'");
-    });
-
-    test('Should handle object property definition syntax', async () => {
-        const input = `
-const parent = {
-    prop1: {},
-    myObject: {
-        id: 'nested'
-    },
-};
-
-const myObject = {
-    id: 'root'
-};`;
-        let foundId: string | undefined;
-
-        const builder = new TypeScriptCodeBuilder();
-        builder.parseText(input);
-
-        builder.findObject('myObject', {
-            onFound: (objectBuilder) => {
-                objectBuilder.findProperty('id', {
-                    onFound: (value) => {
-                        foundId = value;
-                    }
-                });
-            }
-        });
-
-        assert.strictEqual(foundId, "'root'");
-    });
-
-    test('Should maintain correct nesting level with mixed braces and brackets', async () => {
-        const input = `
-const mixed = {
-    array: [
-        { nested: { deep: true } },
-        { myObject: { id: 'nested' } }
-    ]
-};
-
-const myObject = {
-    id: 'root'
-};`;
-        let foundId: string | undefined;
-
-        const builder = new TypeScriptCodeBuilder();
-        builder.parseText(input);
-
-        builder.findObject('myObject', {
-            onFound: (objectBuilder) => {
-                objectBuilder.findProperty('id', {
-                    onFound: (value) => {
-                        foundId = value;
-                    }
-                });
-            }
-        });
-
-        assert.strictEqual(foundId, "'root'");
-    });
+	test('Should return original code if no edits were scheduled', async () => {
+		const input = `const a = 123;`;
+		const builder = new TypeScriptCodeBuilder();
+		builder.parseText(input);
+		const result = await builder.toString();
+		assert.strictEqual(result, input);
+	});
 });
 
 
 
-suite('TypeScript Object Builder Tests', () => {
-    vscode.window.showInformationMessage('Starting TypeScript Object Builder tests.');
 
-
-    test('Should find property in found object', () => {
-        const input = `
-const myObject = {
-    id: 'test'
-};`;
-
-        const builder = new TypeScriptCodeBuilder();
-        builder.parseText(input);
-        let objectBuilder: ObjectBuilder | undefined;
-
-        // Get the object builder
-        builder.findObject('myObject', {
-            onFound: (builder) => {
-                objectBuilder = builder;
-            }
-        });
-
-        // Find the property in the object
-        let foundValue: string | undefined;
-        objectBuilder?.findProperty('id', {
-            onFound: (value) => {
-                foundValue = value;
-            }
-        });
-
-        assert.strictEqual(foundValue, "'test'");
+suite("TypeScriptTypeBuilder and findType Functionality", () => {
+  test("should retrieve a simple primary type from a type annotation", async () => {
+    const input = `const x: number = 123;`;
+    const builder = new TypeScriptCodeBuilder();
+    builder.parseText(input);
+    let retrievedType = "";
+    // Locate the type annotation for variable "x"
+    builder.findType("x", {
+      onFound: (typeBuilder: TypeScriptTypeBuilder) => {
+        retrievedType = typeBuilder.getTypeText();
+      },
     });
+    assert.strictEqual(retrievedType, "number", "Expected type text to be 'number'");
+  });
 
-
-    test('Should find and modify property in found object', async () => {
-        const input = `
-const myObject = {
-    id: 'original',
-    name: 'test'
-};`;
-
-        const builder = new TypeScriptCodeBuilder();
-        builder.parseText(input);
-        let objectBuilder: ObjectBuilder | undefined;
-
-        builder.findObject('myObject', {
-            onFound: (builder) => {
-                objectBuilder = builder;
-            }
-        });
-
-        if (!objectBuilder) {
-            assert.fail('Object builder should be found');
-        }
-
-        // Test finding existing property
-        let foundValue: string | undefined;
-        objectBuilder.findProperty('id', {
-            onFound: (value) => {
-                foundValue = value;
-            }
-        });
-        assert.strictEqual(foundValue, "'original'");
-
-        // Test modifying property
-        objectBuilder.setPropertyValue('id', "'modified'");
-
-        // Verify modification
-        let modifiedValue: string | undefined;
-        objectBuilder.findProperty('id', {
-            onFound: (value) => {
-                modifiedValue = value;
-            }
-        });
-        assert.strictEqual(modifiedValue, "'modified'");
+  test("should list union types from a union type annotation", async () => {
+    const input = `const y: A | B | C = someValue;`;
+    const builder = new TypeScriptCodeBuilder();
+    builder.parseText(input);
+    let unionTypes: string[] = [];
+    builder.findType("y", {
+      onFound: (typeBuilder: TypeScriptTypeBuilder) => {
+        unionTypes = typeBuilder.getUnionTypes();
+      },
     });
+    assert.deepStrictEqual(
+      unionTypes,
+      ["A", "B", "C"],
+      "Expected union types to be ['A', 'B', 'C']"
+    );
+  });
 
-
-    test('Should add new property to found object', async () => {
-        const input = `
-const myObject = {
-    id: 'test'
-};`;
-
-        const builder = new TypeScriptCodeBuilder();
-        builder.parseText(input);
-        let objectBuilder: ObjectBuilder | undefined;
-
-        builder.findObject('myObject', {
-            onFound: (builder) => {
-                objectBuilder = builder;
-            }
-        });
-
-        if (!objectBuilder) {
-            assert.fail('Object builder should be found');
-        }
-
-        // Add new property
-        objectBuilder.addProperty('newProp', "'added'");
-
-        // Verify new property exists
-        let addedValue: string | undefined;
-        objectBuilder.findProperty('newProp', {
-            onFound: (value) => {
-                addedValue = value;
-            }
-        });
-        assert.strictEqual(addedValue, "'added'");
+  test("should add a new union type to a primary type", async () => {
+    // The variable "z" is originally annotated with type 'number'.
+    // After adding 'string' to the union, the type should be "number | string".
+    const input = `const z: number = 123;`;
+    const expected = `const z: number | string = 123;`;
+    const builder = new TypeScriptCodeBuilder();
+    builder.parseText(input);
+    builder.findType("z", {
+      onFound: (typeBuilder: TypeScriptTypeBuilder) => {
+        typeBuilder.addUnionType("string");
+      },
     });
+    const result = await builder.toString();
+    assert.strictEqual(result, expected, "Expected the type annotation to be updated to a union");
+  });
 
-    test('Should find nested object in found object', async () => {
-        const input = `
-const myObject = {
-    nested: {
-        id: 'inner',
-        data: 'test'
-    }
-};`;
-
-        const builder = new TypeScriptCodeBuilder();
-        builder.parseText(input);
-        let objectBuilder: ObjectBuilder | undefined;
-
-        builder.findObject('myObject', {
-            onFound: (builder) => {
-                objectBuilder = builder;
-            }
-        });
-
-        if (!objectBuilder) {
-            assert.fail('Object builder should be found');
-        }
-
-        let nestedBuilder: ObjectBuilder | undefined;
-        objectBuilder.findObject('nested', {
-            onFound: (builder) => {
-                nestedBuilder = builder;
-            }
-        });
-
-        if (!nestedBuilder) {
-            assert.fail('Nested object builder should be found');
-        }
-
-        // Test finding properties in nested object
-        let nestedId: string | undefined;
-        nestedBuilder.findProperty('id', {
-            onFound: (value) => {
-                nestedId = value;
-            }
-        });
-        assert.strictEqual(nestedId, "'inner'");
-
-        let nestedData: string | undefined;
-        nestedBuilder.findProperty('data', {
-            onFound: (value) => {
-                nestedData = value;
-            }
-        });
-        assert.strictEqual(nestedData, "'test'");
+  test("should replace the entire type annotation using setType", async () => {
+    // The variable "a" is originally annotated with type 'boolean'.
+    // After replacing it with 'string', the type annotation should change.
+    const input = `const a: boolean = true;`;
+    const expected = `const a: string = true;`;
+    const builder = new TypeScriptCodeBuilder();
+    builder.parseText(input);
+    builder.findType("a", {
+      onFound: (typeBuilder: TypeScriptTypeBuilder) => {
+        typeBuilder.setType("string");
+      },
     });
-});
+    const result = await builder.toString();
+    assert.strictEqual(result, expected, "Expected the type annotation to be replaced with 'string'");
+  });
 
-
-suite('Property Tracking Object Builder Tests', () => {
-    vscode.window.showInformationMessage('Starting Property Tracking Object Builder tests.');
-
-    test('Should track property initialization and changes', () => {
-        const input = `
-const myObject = {
-    id: 'test',
-    age: 25
-};`;
-
-        const builder = new TypeScriptCodeBuilder();
-        builder.parseText(input);
-        let objectBuilder: ObjectBuilder | undefined;
-
-        builder.findObject('myObject', {
-            onFound: (builder) => {
-                objectBuilder = new PropertyTrackingObjectBuilder(builder, {
-                    strictTypes: true,
-                    trackHistory: true
-                });
-            }
-        });
-
-        if (!objectBuilder) {
-            assert.fail('Object builder should be found');
-        }
-
-        // Register properties
-        const trackedBuilder = objectBuilder as PropertyTrackingObjectBuilder;
-        trackedBuilder.registerProperty('id', 'string', { required: true });
-        trackedBuilder.registerProperty('age', 'number');
-
-        // Verify initial values are tracked
-        let idValue: string | undefined;
-        let ageValue: string | undefined;
-
-        trackedBuilder.findProperty('id', {
-            onFound: (value) => {
-                idValue = value;
-            }
-        });
-
-        trackedBuilder.findProperty('age', {
-            onFound: (value) => {
-                ageValue = value;
-            }
-        });
-
-        assert.strictEqual(idValue, "'test'");
-        assert.strictEqual(ageValue, "25");
-
-        // Modify property and check history
-        trackedBuilder.setPropertyValue('id', "'modified'");
-        const idHistory = trackedBuilder.getPropertyHistory('id');
-
-        assert.strictEqual(idHistory.length, 2); // Initial value + modification
-        assert.strictEqual(idHistory[1].oldValue, "'test'");
-        assert.strictEqual(idHistory[1].newValue, "'modified'");
-        assert.strictEqual(idHistory[1].type, 'modify');
+  test("should leave code unchanged if variable is not found", async () => {
+    // If a variable is not found, no edits should be scheduled.
+    const input = `const b: number = 456;`;
+    const builder = new TypeScriptCodeBuilder();
+    builder.parseText(input);
+    builder.findType("nonexistent", {
+      onFound: (typeBuilder: TypeScriptTypeBuilder) => {
+        typeBuilder.setType("string");
+      },
     });
+    const result = await builder.toString();
+    assert.strictEqual(result, input, "Expected no modifications when variable is not found");
+  });
 
-    test('Should validate property types', () => {
-        const input = `
-const myObject = {
-    id: 'test'
-};`;
-
-        const builder = new TypeScriptCodeBuilder();
-        builder.parseText(input);
-        let trackedBuilder: PropertyTrackingObjectBuilder | undefined;
-
-        builder.findObject('myObject', {
-            onFound: (builder) => {
-                trackedBuilder = new PropertyTrackingObjectBuilder(builder, {
-                    strictTypes: true,
-                    validateOnChange: true
-                });
-            }
-        });
-
-        if (!trackedBuilder) {
-            assert.fail('Builder should be found');
-        }
-
-        // Register property with type
-        trackedBuilder.registerProperty('id', 'string');
-        trackedBuilder.registerProperty('age', 'number');
-
-        // Try setting invalid type
-        trackedBuilder.setPropertyValue('age', "'invalid'");
-
-        // Check validation errors
-        const errors = trackedBuilder.getValidationErrors();
-        assert.strictEqual(errors.length, 1);
-        assert.strictEqual(errors[0].code, 'TYPE_ERROR');
-        assert.strictEqual(errors[0].propertyName, 'age');
+  test("should handle type annotations with extra whitespace", async () => {
+    // For input with extra whitespace, the updated region is replaced so that the
+    // final code has exactly one space after the colon and one space before the delimiter.
+    const input = `const c:   number    = 789;`;
+    const expected = `const c: number | null = 789;`;
+    const builder = new TypeScriptCodeBuilder();
+    builder.parseText(input);
+    builder.findType("c", {
+      onFound: (typeBuilder: TypeScriptTypeBuilder) => {
+        // Append 'null' to the existing primary type 'number'
+        typeBuilder.addUnionType("null");
+      },
     });
-
-    test('Should handle custom validation rules', () => {
-        const input = `
-const myObject = {
-    age: 25
-};`;
-
-        const builder = new TypeScriptCodeBuilder();
-        builder.parseText(input);
-        let trackedBuilder: PropertyTrackingObjectBuilder | undefined;
-
-        builder.findObject('myObject', {
-            onFound: (builder) => {
-                trackedBuilder = new PropertyTrackingObjectBuilder(builder, {
-                    validateOnChange: true
-                });
-            }
-        });
-
-        if (!trackedBuilder) {
-            assert.fail('Builder should be found');
-        }
-
-        // Register property with custom validation
-        trackedBuilder.registerProperty('age', 'number', {
-            validation: (value) => value >= 0 && value <= 120
-        });
-
-        // Try setting invalid value
-        trackedBuilder.setPropertyValue('age', '150');
-
-        // Check validation errors
-        const errors = trackedBuilder.getValidationErrors();
-        assert.strictEqual(errors.length, 1);
-        assert.strictEqual(errors[0].code, 'VALIDATION_ERROR');
-    });
-
-    test('Should track multiple property changes', () => {
-        const input = `
-const myObject = {
-    id: 'test',
-    name: 'John',
-    age: 25
-};`;
-
-        const builder = new TypeScriptCodeBuilder();
-        builder.parseText(input);
-        let trackedBuilder: PropertyTrackingObjectBuilder | undefined;
-
-        builder.findObject('myObject', {
-            onFound: (builder) => {
-                trackedBuilder = new PropertyTrackingObjectBuilder(builder, {
-                    trackHistory: true
-                });
-            }
-        });
-
-        if (!trackedBuilder) {
-            assert.fail('Builder should be found');
-        }
-
-        // Register multiple properties
-        trackedBuilder.registerProperty('id', 'string');
-        trackedBuilder.registerProperty('name', 'string');
-        trackedBuilder.registerProperty('age', 'number');
-
-        // Make multiple changes
-        trackedBuilder.setPropertyValue('id', "'user123'");
-        trackedBuilder.setPropertyValue('name', "'Jane'");
-        trackedBuilder.setPropertyValue('age', '30');
-
-        // Check history for each property
-        const idHistory = trackedBuilder.getPropertyHistory('id');
-        const nameHistory = trackedBuilder.getPropertyHistory('name');
-        const ageHistory = trackedBuilder.getPropertyHistory('age');
-
-        assert.strictEqual(idHistory.length, 2);
-        assert.strictEqual(nameHistory.length, 2);
-        assert.strictEqual(ageHistory.length, 2);
-
-        // Verify latest changes
-        assert.strictEqual(idHistory[1].newValue, "'user123'");
-        assert.strictEqual(nameHistory[1].newValue, "'Jane'");
-        assert.strictEqual(ageHistory[1].newValue, '30');
-    });
-
-    test('Should handle property addition', () => {
-        const input = `
-const myObject = {
-    id: 'test'
-};`;
-
-        const builder = new TypeScriptCodeBuilder();
-        builder.parseText(input);
-        let trackedBuilder: PropertyTrackingObjectBuilder | undefined;
-
-        builder.findObject('myObject', {
-            onFound: (builder) => {
-                trackedBuilder = new PropertyTrackingObjectBuilder(builder, {
-                    trackHistory: true
-                });
-            }
-        });
-
-        if (!trackedBuilder) {
-            assert.fail('Builder should be found');
-        }
-
-        // Register and add new property
-        trackedBuilder.registerProperty('newProp', 'string');
-        trackedBuilder.addProperty('newProp', "'added'");
-
-        // Check history
-        const propHistory = trackedBuilder.getPropertyHistory('newProp');
-        assert.strictEqual(propHistory.length, 1);
-        assert.strictEqual(propHistory[0].type, 'add');
-        assert.strictEqual(propHistory[0].newValue, "'added'");
-    });
-
-    test('Should validate required properties', () => {
-        const input = `
-const myObject = {};`;
-
-        const builder = new TypeScriptCodeBuilder();
-        builder.parseText(input);
-        let trackedBuilder: PropertyTrackingObjectBuilder | undefined;
-
-        builder.findObject('myObject', {
-            onFound: (builder) => {
-                trackedBuilder = new PropertyTrackingObjectBuilder(builder, {
-                    validateOnChange: true
-                });
-            }
-        });
-
-        if (!trackedBuilder) {
-            assert.fail('Builder should be found');
-        }
-
-        // Register required property
-        trackedBuilder.registerProperty('id', 'string', { required: true });
-
-        // Validate all properties
-        const errors = trackedBuilder.validateAllProperties();
-        assert.strictEqual(errors.length, 1);
-        assert.strictEqual(errors[0].code, 'REQUIRED_ERROR');
-    });
-
-    test('Should respect maxHistoryLength option', () => {
-        const input = `
-const myObject = {
-    counter: 0
-};`;
-
-        const builder = new TypeScriptCodeBuilder();
-        builder.parseText(input);
-        let trackedBuilder: PropertyTrackingObjectBuilder | undefined;
-
-        builder.findObject('myObject', {
-            onFound: (builder) => {
-                trackedBuilder = new PropertyTrackingObjectBuilder(builder, {
-                    trackHistory: true,
-                    maxHistoryLength: 3
-                });
-            }
-        });
-
-        if (!trackedBuilder) {
-            assert.fail('Builder should be found');
-        }
-
-        // Register property
-        trackedBuilder.registerProperty('counter', 'number');
-
-        // Make multiple changes
-        trackedBuilder.setPropertyValue('counter', '1');
-        trackedBuilder.setPropertyValue('counter', '2');
-        trackedBuilder.setPropertyValue('counter', '3');
-        trackedBuilder.setPropertyValue('counter', '4');
-
-        // Check history length is limited
-        const history = trackedBuilder.getPropertyHistory('counter');
-        assert.strictEqual(history.length, 3);
-        assert.strictEqual(history[2].newValue, '4');
-    });
-
-    test('Should handle nested object properties', () => {
-        const input = `
-const myObject = {
-    user: {
-        id: 'test',
-        details: {
-            age: 25
-        }
-    }
-};`;
-
-        const builder = new TypeScriptCodeBuilder();
-        builder.parseText(input);
-        let trackedBuilder: PropertyTrackingObjectBuilder | undefined;
-
-        builder.findObject('myObject', {
-            onFound: (builder) => {
-                trackedBuilder = new PropertyTrackingObjectBuilder(builder, {
-                    trackHistory: true
-                });
-            }
-        });
-
-        if (!trackedBuilder) {
-            assert.fail('Builder should be found');
-        }
-
-        // Find nested object
-        trackedBuilder.findObject('user', {
-            onFound: (userBuilder) => {
-                const trackedUserBuilder = userBuilder as PropertyTrackingObjectBuilder;
-
-                // Register and track nested properties
-                trackedUserBuilder.registerProperty('id', 'string');
-
-                // Modify nested property
-                trackedUserBuilder.setPropertyValue('id', "'modified'");
-
-                // Check history
-                const idHistory = trackedUserBuilder.getPropertyHistory('id');
-                assert.strictEqual(idHistory.length, 2);
-                assert.strictEqual(idHistory[1].newValue, "'modified'");
-            }
-        });
-    });
-
-    test('Should handle array property type', () => {
-        const input = `
-const myObject = {
-    tags: ['a', 'b', 'c']
-};`;
-
-        const builder = new TypeScriptCodeBuilder();
-        builder.parseText(input);
-        let trackedBuilder: PropertyTrackingObjectBuilder | undefined;
-
-        builder.findObject('myObject', {
-            onFound: (builder) => {
-                trackedBuilder = new PropertyTrackingObjectBuilder(builder, {
-                    strictTypes: true
-                });
-            }
-        });
-
-        if (!trackedBuilder) {
-            assert.fail('Builder should be found');
-        }
-
-        // Register array property
-        trackedBuilder.registerProperty('tags', 'array');
-
-        // Try setting valid and invalid values
-        trackedBuilder.setPropertyValue('tags', "['x', 'y']"); // Valid
-        assert.strictEqual(trackedBuilder.getValidationErrors().length, 0);
-
-        trackedBuilder.setPropertyValue('tags', "'invalid'"); // Invalid
-        const errors = trackedBuilder.getValidationErrors();
-        assert.strictEqual(errors.length, 1);
-        assert.strictEqual(errors[0].code, 'TYPE_ERROR');
-    });
-});
-
-suite('TypeScript Array Builder Tests', () => {
-    test('Should create empty array property', () => {
-        const input = `
-const myObject = {
-    id: 'test'
-};`;
-
-        const builder = new TypeScriptCodeBuilder();
-        builder.parseText(input);
-        let objectBuilder: ObjectBuilder | undefined;
-
-        builder.findObject('myObject', {
-            onFound: (builder) => {
-                objectBuilder = builder;
-            }
-        });
-
-        // Add empty array
-        objectBuilder!.addArray('newArray', () => { });
-
-        // Verify array exists
-        let arrayFound = false;
-        objectBuilder!.findArray('newArray', {
-            onFound: () => {
-                arrayFound = true;
-            }
-        });
-
-        assert.strictEqual(arrayFound, true);
-    });
-
-    test('Should add object to array', () => {
-        const builder = new TypeScriptArrayBuilder(
-            '',  // empty source
-            0,   // start
-            0,   // end
-            []   // no modifications yet
-        );
-
-        let objectFound = false;
-        builder.addNewObject((objBuilder) => {
-            objectFound = true;
-        });
-
-        const items = builder.getItems();
-        assert.strictEqual(items.length, 1);
-        assert.strictEqual(objectFound, true);
-    });
-
-    test('Should add multiple objects to array', () => {
-        const builder = new TypeScriptArrayBuilder(
-            '',  // empty source
-            0,   // start
-            0,   // end
-            []   // no modifications yet
-        );
-
-        let objectCount = 0;
-        builder.addNewObject((objBuilder) => {
-            objectCount++;
-        });
-
-        builder.addNewObject((objBuilder) => {
-            objectCount++;
-        });
-
-        const items = builder.getItems();
-        assert.strictEqual(items.length, 2);
-        assert.strictEqual(objectCount, 2);
-    });
-
-    test('Should get item from array', () => {
-        const input = `
-        const myObject = {
-            myArray: ['item1']
-        };`;
-        const builder = new TypeScriptCodeBuilder();
-        builder.parseText(input);
-
-        builder.findObject('myObject', {
-            onFound: (objBuilder) => {
-                objBuilder.findArray('myArray', {
-                    onFound: (arrayBuilder) => {
-                        const item = arrayBuilder.getItems()[0];
-                        assert.strictEqual(item, "'item1'");
-                    }
-                });
-            }
-        }); 
-    });
-});
-
-
-
-suite('Property Tracking Object Builder Additional Tests', () => {
-    test('Should handle null and undefined property values', () => {
-        const input = `
-const myObject = {
-    required: null,
-    optional: undefined
-};`;
-
-        const builder = new TypeScriptCodeBuilder();
-        builder.parseText(input);
-        let trackedBuilder: PropertyTrackingObjectBuilder | undefined;
-
-        builder.findObject('myObject', {
-            onFound: (builder) => {
-                trackedBuilder = new PropertyTrackingObjectBuilder(builder, {
-                    strictTypes: true
-                });
-            }
-        });
-
-        if (!trackedBuilder) {
-            assert.fail('Builder should be found');
-        }
-
-        // Register properties
-        trackedBuilder.registerProperty('required', 'any', { required: true });
-        trackedBuilder.registerProperty('optional', 'any');
-
-        // Validate all properties
-        const errors = trackedBuilder.validateAllProperties();
-
-        // Required property with null should still trigger required error
-        assert.strictEqual(errors.length, 1);
-        assert.strictEqual(errors[0].code, 'REQUIRED_ERROR');
-        assert.strictEqual(errors[0].propertyName, 'required');
-    });
-
-    test('Should handle custom validation functions', () => {
-        const input = `
-const myObject = {
-    email: 'test@example.com',
-    age: 25
-};`;
-
-        const builder = new TypeScriptCodeBuilder();
-        builder.parseText(input);
-        let trackedBuilder: PropertyTrackingObjectBuilder | undefined;
-
-        builder.findObject('myObject', {
-            onFound: (builder) => {
-                trackedBuilder = new PropertyTrackingObjectBuilder(builder, {
-                    validateOnChange: true
-                });
-            }
-        });
-
-        if (!trackedBuilder) {
-            assert.fail('Builder should be found');
-        }
-
-        // Register properties with custom validation
-        trackedBuilder.registerProperty('email', 'string', {
-            validation: (value) => value.includes('@') && value.includes('.')
-        });
-        trackedBuilder.registerProperty('age', 'number', {
-            validation: (value) => value >= 0 && value <= 120
-        });
-
-        // Test valid values
-        trackedBuilder.setPropertyValue('email', "'valid@email.com'");
-        trackedBuilder.setPropertyValue('age', '30');
-        assert.strictEqual(trackedBuilder.getValidationErrors().length, 0);
-
-        // Test invalid values
-        trackedBuilder.setPropertyValue('email', "'invalid-email'");
-        trackedBuilder.setPropertyValue('age', '150');
-        const errors = trackedBuilder.getValidationErrors();
-        assert.strictEqual(errors.length, 2);
-        assert.strictEqual(errors[0].code, 'VALIDATION_ERROR');
-    });
-
-    test('Should properly track nested property changes', () => {
-        const input = `
-const myObject = {
-    user: {
-        profile: {
-            name: 'John',
-            settings: {
-                theme: 'dark'
-            }
-        }
-    }
-};`;
-
-        const builder = new TypeScriptCodeBuilder();
-        builder.parseText(input);
-        let trackedBuilder: PropertyTrackingObjectBuilder | undefined;
-
-        builder.findObject('myObject', {
-            onFound: (builder) => {
-                trackedBuilder = new PropertyTrackingObjectBuilder(builder, {
-                    trackHistory: true
-                });
-            }
-        });
-
-        if (!trackedBuilder) {
-            assert.fail('Builder should be found');
-        }
-
-        // Track nested changes
-        trackedBuilder.findObject('user', {
-            onFound: (userBuilder) => {
-                const trackedUserBuilder = userBuilder as PropertyTrackingObjectBuilder;
-                trackedUserBuilder.findObject('profile', {
-                    onFound: (profileBuilder) => {
-                        const trackedProfileBuilder = profileBuilder as PropertyTrackingObjectBuilder;
-
-                        // Register and modify nested property
-                        trackedProfileBuilder.registerProperty('name', 'string');
-                        trackedProfileBuilder.setPropertyValue('name', "'Jane'");
-
-                        // Check history
-                        const nameHistory = trackedProfileBuilder.getPropertyHistory('name');
-                        assert.strictEqual(nameHistory.length, 2);
-                        assert.strictEqual(nameHistory[0].type, 'add');
-                        assert.strictEqual(nameHistory[1].type, 'modify');
-                    }
-                });
-            }
-        });
-    });
-
-    test('Should handle history length limits', () => {
-        const input = `
-const myObject = {
-    counter: 0
-};`;
-
-        const builder = new TypeScriptCodeBuilder();
-        builder.parseText(input);
-        let trackedBuilder: PropertyTrackingObjectBuilder | undefined;
-
-        builder.findObject('myObject', {
-            onFound: (builder) => {
-                trackedBuilder = new PropertyTrackingObjectBuilder(builder, {
-                    trackHistory: true,
-                    maxHistoryLength: 3
-                });
-            }
-        });
-
-        if (!trackedBuilder) {
-            assert.fail('Builder should be found');
-        }
-
-        // Register property
-        trackedBuilder.registerProperty('counter', 'number');
-
-        // Make multiple changes
-        for (let i = 1; i <= 5; i++) {
-            trackedBuilder.setPropertyValue('counter', i.toString());
-        }
-
-        // Check history length and contents
-        const history = trackedBuilder.getPropertyHistory('counter');
-        assert.strictEqual(history.length, 3);
-        assert.strictEqual(history[history.length - 1].newValue, '5');
-        assert.strictEqual(history[history.length - 2].newValue, '4');
-        assert.strictEqual(history[history.length - 3].newValue, '3');
-    });
-
-    test('Should handle multiple type validations', () => {
-        const input = `
-const myObject = {
-    stringProp: 'hello',
-    numberProp: 42,
-    boolProp: true,
-    objectProp: { key: 'value' },
-    arrayProp: [1, 2, 3]
-};`;
-
-        const builder = new TypeScriptCodeBuilder();
-        builder.parseText(input);
-        let trackedBuilder: PropertyTrackingObjectBuilder | undefined;
-
-        builder.findObject('myObject', {
-            onFound: (builder) => {
-                trackedBuilder = new PropertyTrackingObjectBuilder(builder, {
-                    strictTypes: true
-                });
-            }
-        });
-
-        if (!trackedBuilder) {
-            assert.fail('Builder should be found');
-        }
-
-        // Register properties with different types
-        trackedBuilder.registerProperty('stringProp', 'string');
-        trackedBuilder.registerProperty('numberProp', 'number');
-        trackedBuilder.registerProperty('boolProp', 'boolean');
-        trackedBuilder.registerProperty('objectProp', 'object');
-        trackedBuilder.registerProperty('arrayProp', 'array');
-
-        // Test invalid type assignments
-        trackedBuilder.setPropertyValue('stringProp', '42');
-        trackedBuilder.setPropertyValue('numberProp', "'string'");
-        trackedBuilder.setPropertyValue('boolProp', '42');
-        trackedBuilder.setPropertyValue('objectProp', "'invalid'");
-        trackedBuilder.setPropertyValue('arrayProp', "'not-array'");
-
-        const errors = trackedBuilder.getValidationErrors();
-        assert.strictEqual(errors.length, 4); // numberProp, boolProp, objectProp, arrayProp should fail
-    });
-
-    test('Should track property deletions', () => {
-        const input = `
-const myObject = {
-    temp: 'temporary',
-    permanent: 'stays'
-};`;
-
-        const builder = new TypeScriptCodeBuilder();
-        builder.parseText(input);
-        let trackedBuilder: PropertyTrackingObjectBuilder | undefined;
-
-        builder.findObject('myObject', {
-            onFound: (builder) => {
-                trackedBuilder = new PropertyTrackingObjectBuilder(builder, {
-                    trackHistory: true
-                });
-            }
-        });
-
-        if (!trackedBuilder) {
-            assert.fail('Builder should be found');
-        }
-
-        // Register properties
-        trackedBuilder.registerProperty('temp', 'string');
-        trackedBuilder.registerProperty('permanent', 'string');
-
-        // Set property to undefined/null to simulate deletion
-        trackedBuilder.setPropertyValue('temp', 'undefined');
-
-        // Check history
-        const history = trackedBuilder.getPropertyHistory('temp');
-        assert.strictEqual(history.length, 2);
-        assert.strictEqual(history[1].type, 'modify');
-        assert.strictEqual(history[1].newValue, 'undefined');
-    });
-
-    test('Should handle concurrent modifications', () => {
-        const input = `
-const myObject = {
-    prop1: 'value1',
-    prop2: 'value2'
-};`;
-
-        const builder = new TypeScriptCodeBuilder();
-        builder.parseText(input);
-        let trackedBuilder: PropertyTrackingObjectBuilder | undefined;
-
-        builder.findObject('myObject', {
-            onFound: (builder) => {
-                trackedBuilder = new PropertyTrackingObjectBuilder(builder, {
-                    trackHistory: true
-                });
-            }
-        });
-
-        if (!trackedBuilder) {
-            assert.fail('Builder should be found');
-        }
-
-        // Register properties
-        trackedBuilder.registerProperty('prop1', 'string');
-        trackedBuilder.registerProperty('prop2', 'string');
-
-        // Make concurrent modifications
-        trackedBuilder.setPropertyValue('prop1', "'new1'");
-        trackedBuilder.setPropertyValue('prop2', "'new2'");
-        trackedBuilder.setPropertyValue('prop1', "'new3'");
-
-        // Check histories
-        const prop1History = trackedBuilder.getPropertyHistory('prop1');
-        const prop2History = trackedBuilder.getPropertyHistory('prop2');
-
-        assert.strictEqual(prop1History.length, 3); // initial + 2 modifications
-        assert.strictEqual(prop2History.length, 2); // initial + 1 modification
-        assert.strictEqual(prop1History[2].newValue, "'new3'");
-        assert.strictEqual(prop2History[1].newValue, "'new2'");
-    });
-
-    test('Should handle property validation order', () => {
-        const input = `
-const myObject = {
-    username: 'john',
-    email: 'john@example.com'
-};`;
-
-        const builder = new TypeScriptCodeBuilder();
-        builder.parseText(input);
-        let trackedBuilder: PropertyTrackingObjectBuilder | undefined;
-
-        builder.findObject('myObject', {
-            onFound: (builder) => {
-                trackedBuilder = new PropertyTrackingObjectBuilder(builder, {
-                    validateOnChange: true
-                });
-            }
-        });
-
-        if (!trackedBuilder) {
-            assert.fail('Builder should be found');
-        }
-
-        // Register properties with dependent validation
-        let username = '';
-        trackedBuilder.registerProperty('username', 'string', {
-            validation: (value) => {
-                username = value;
-                return value.length >= 3;
-            }
-        });
-
-        trackedBuilder.registerProperty('email', 'string', {
-            validation: (value) => {
-                return value.startsWith(username + '@');
-            }
-        });
-
-        // Test validation order
-        trackedBuilder.setPropertyValue('username', "'jane'");
-        trackedBuilder.setPropertyValue('email', "'jane@example.com'");
-        assert.strictEqual(trackedBuilder.getValidationErrors().length, 0);
-
-        trackedBuilder.setPropertyValue('email', "'john@example.com'");
-        assert.strictEqual(trackedBuilder.getValidationErrors().length, 1);
-    });
-});
-
-
-
-suite('TypeScript Code Builder Type Annotation Tests', () => {
-    vscode.window.showInformationMessage('Starting type annotation handling tests.');
-
-    test('Should find object with type annotation', async () => {
-        const input = `
-import { TLocation } from 'types/TLocation';
-
-export const eeeeLocation: TLocation<'eeee'> = {
-    id: 'eeee',
-    name: _('eeee'),
-    description: \`\`,
-    localCharacters: [],
-    init: {},
-};
-
-export type TEeeeLocationData = {
-    
-}`;
-        let foundCalled = false;
-
-        const builder = new TypeScriptCodeBuilder();
-        builder.parseText(input);
-
-        builder.findObject('eeeeLocation', {
-            onFound: (objectBuilder) => {
-                foundCalled = true;
-                // Test that we can read properties
-                objectBuilder.findProperty('id', {
-                    onFound: (value) => {
-                        assert.strictEqual(value, "'eeee'");
-                    }
-                });
-            },
-            onNotFound: () => {
-                assert.fail('Should have found object eeeeLocation');
-            }
-        });
-
-        assert.strictEqual(foundCalled, true, 'onFound should have been called');
-    });
-
-    test('Should find object with complex generic type annotation', async () => {
-        const input = `
-export const complexLocation: ComplexType<'test', { nested: string }> = {
-    id: 'test'
-};`;
-        let foundCalled = false;
-
-        const builder = new TypeScriptCodeBuilder();
-        builder.parseText(input);
-
-        builder.findObject('complexLocation', {
-            onFound: (objectBuilder) => {
-                foundCalled = true;
-            }
-        });
-
-        assert.strictEqual(foundCalled, true);
-    });
-
-    test('Should find object with intersection type annotation', async () => {
-        const input = `
-export const mixedLocation: BaseType & ExtendedType<'test'> = {
-    id: 'test'
-};`;
-        let foundCalled = false;
-
-        const builder = new TypeScriptCodeBuilder();
-        builder.parseText(input);
-
-        builder.findObject('mixedLocation', {
-            onFound: (objectBuilder) => {
-                foundCalled = true;
-            }
-        });
-
-        assert.strictEqual(foundCalled, true);
-    });
-
-    test('Should modify array in typed object', async () => {
-        const input = `
-export const typedLocation: Location<'test'> = {
-    items: ['a', 'b']
-};`;
-        const expected = `export const typedLocation: Location<'test'> = {
-    items: ['a', 'b', 'c'],
-};\n`;
-
-        const builder = new TypeScriptCodeBuilder();
-        builder.parseText(input);
-
-        builder.findObject('typedLocation', {
-            onFound: (objectBuilder) => {
-                objectBuilder.setPropertyValue('items', "['a', 'b', 'c']");
-            }
-        });
-
-        assert.strictEqual(await builder.toString(), expected);
-    });
-
-    test('Should add array to typed object', async () => {
-        const input = `
-export const typedLocation: Location<'test'> = {
-    id: 'test'
-};`;
-        const expected = `export const typedLocation: Location<'test'> = {
-    id: 'test',
-    items: ['new'],
-};\n`;
-
-        const builder = new TypeScriptCodeBuilder();
-        builder.parseText(input);
-
-        builder.findObject('typedLocation', {
-            onFound: (objectBuilder) => {
-                objectBuilder.addArray('items', () => { });
-                objectBuilder.setPropertyValue('items', "['new']");
-            }
-        });
-
-        assert.strictEqual(await builder.toString(), expected);
-    });
-
-    test('Should add an item to array in typed object', async () => {
-        const input = `
-export const typedLocation: Location<'test'> = {
-    items: ['a']
-};`;
-        const expected = `export const typedLocation: Location<'test'> = {
-    items: ['a', 'b'],
-};\n`;
-
-        const builder = new TypeScriptCodeBuilder();
-        builder.parseText(input);
-
-        builder.findObject('typedLocation', {
-            onFound: (objectBuilder) => {
-                objectBuilder.findArray('items', {
-                    onFound: (arrayBuilder) => {
-                        arrayBuilder.addItem("'b'");
-                    }
-                });
-            }
-        });
-
-        assert.strictEqual(await builder.toString(), expected);
-    });
-});
-
-
-suite('TypeScript Array Builder Remove Item Tests', () => {
-    test('Should remove simple string item from array', async () => {
-        const input = `
-export const testObject = {
-    items: ['a', 'b', 'c']
-};`;
-        const expected = `export const testObject = {
-    items: ['a', 'c'],
-};\n`;
-
-        const builder = new TypeScriptCodeBuilder();
-        builder.parseText(input);
-
-        builder.findObject('testObject', {
-            onFound: (objectBuilder) => {
-                objectBuilder.findArray('items', {
-                    onFound: (arrayBuilder) => {
-                        arrayBuilder.removeItem("'b'");
-                    }
-                });
-            }
-        });
-
-        assert.strictEqual(await builder.toString(), expected);
-    });
-
-    test('Should remove object reference from array', async () => {
-        const input = `
-export const testObject = {
-    items: [objectA, objectB, objectC]
-};`;
-        const expected = `export const testObject = {
-    items: [objectA, objectC],
-};\n`;
-
-        const builder = new TypeScriptCodeBuilder();
-        builder.parseText(input);
-
-        builder.findObject('testObject', {
-            onFound: (objectBuilder) => {
-                objectBuilder.findArray('items', {
-                    onFound: (arrayBuilder) => {
-                        arrayBuilder.removeItem("objectB");
-                    }
-                });
-            }
-        });
-
-        assert.strictEqual(await builder.toString(), expected);
-    });
-
-    test('Should handle removal from array with nested objects', async () => {
-        const input = `
-export const testObject = {
-    items: [
-        { id: 1, name: 'first' },
-        { id: 2, name: 'second' },
-        { id: 3, name: 'third' }
-    ]
-};`;
-        const expected = `export const testObject = {
-    items: [
-        { id: 1, name: 'first' },
-        { id: 3, name: 'third' },
-    ],
-};\n`;
-
-        const builder = new TypeScriptCodeBuilder();
-        builder.parseText(input);
-
-        builder.findObject('testObject', {
-            onFound: (objectBuilder) => {
-                objectBuilder.findArray('items', {
-                    onFound: (arrayBuilder) => {
-                        arrayBuilder.removeItem("{ id: 2, name: 'second' }");
-                    }
-                });
-            }
-        });
-
-        assert.strictEqual(await builder.toString(), expected);
-    });
-
-    test('Should handle array with string literals containing commas', async () => {
-        const input = `
-export const testObject = {
-    items: ['first, item', 'second, remove this', 'third, item']
-};`;
-        const expected = `export const testObject = {
-    items: ['first, item', 'third, item'],
-};\n`;
-
-        const builder = new TypeScriptCodeBuilder();
-        builder.parseText(input);
-
-        builder.findObject('testObject', {
-            onFound: (objectBuilder) => {
-                objectBuilder.findArray('items', {
-                    onFound: (arrayBuilder) => {
-                        arrayBuilder.removeItem("'second, remove this'");
-                    }
-                });
-            }
-        });
-
-        assert.strictEqual(await builder.toString(), expected);
-    });
-
-    test('Should handle array with escaped quotes', async () => {
-        const input = `
-export const testObject = {
-    items: ['normal', 'has \\'quotes\\'', 'last']
-};`;
-        const expected = `export const testObject = {
-    items: ['normal', 'last'],
-};\n`;
-
-        const builder = new TypeScriptCodeBuilder();
-        builder.parseText(input);
-
-        builder.findObject('testObject', {
-            onFound: (objectBuilder) => {
-                objectBuilder.findArray('items', {
-                    onFound: (arrayBuilder) => {
-                        arrayBuilder.removeItem("'has \\'quotes\\''");
-                    }
-                });
-            }
-        });
-
-        assert.strictEqual(await builder.toString(), expected);
-    });
-
-    test('Should handle array with nested arrays', async () => {
-        const input = `
-export const testObject = {
-    items: [
-        [1, 2],
-        [3, 4],
-        [5, 6]
-    ]
-};`;
-        const expected = `export const testObject = {
-    items: [
-        [1, 2],
-        [5, 6],
-    ],
-};\n`;
-
-        const builder = new TypeScriptCodeBuilder();
-        builder.parseText(input);
-
-        builder.findObject('testObject', {
-            onFound: (objectBuilder) => {
-                objectBuilder.findArray('items', {
-                    onFound: (arrayBuilder) => {
-                        arrayBuilder.removeItem("[3, 4]");
-                    }
-                });
-            }
-        });
-
-        assert.strictEqual(await builder.toString(), expected);
-    });
-
-    test('Should handle removal of multiple items', async () => {
-        const input = `
-export const testObject = {
-    items: ['a', 'b', 'c', 'b', 'd']
-};`;
-        const expected = `export const testObject = {
-    items: ['a', 'c', 'd'],
-};\n`;
-
-        const builder = new TypeScriptCodeBuilder();
-        builder.parseText(input);
-
-        builder.findObject('testObject', {
-            onFound: (objectBuilder) => {
-                objectBuilder.findArray('items', {
-                    onFound: (arrayBuilder) => {
-                        arrayBuilder.removeItem("'b'");
-                    }
-                });
-            }
-        });
-
-        assert.strictEqual(await builder.toString(), expected);
-    });
-
-    test('Should handle whitespace in array items', async () => {
-        const input = `
-export const testObject = {
-    items: [
-        'a',
-        'remove this',
-        'c'    ]
-};`;
-        const expected = `export const testObject = {
-    items: ['a', 'c'],
-};\n`;
-
-        const builder = new TypeScriptCodeBuilder();
-        builder.parseText(input);
-
-        builder.findObject('testObject', {
-            onFound: (objectBuilder) => {
-                objectBuilder.findArray('items', {
-                    onFound: (arrayBuilder) => {
-                        arrayBuilder.removeItem("'remove this'");
-                    }
-                });
-            }
-        });
-
-        assert.strictEqual(await builder.toString(), expected);
-    });
-});
-
-
-suite('TypeScript Array Builder RemoveItemAtIndex Tests', () => {
-    test('Should remove item at valid index', async () => {
-        const input = `
-export const testObject = {
-    items: ['a', 'b', 'c']
-};`;
-        const expected = `export const testObject = {
-    items: ['a', 'c'],
-};\n`;
-
-        const builder = new TypeScriptCodeBuilder();
-        builder.parseText(input);
-
-        builder.findObject('testObject', {
-            onFound: (objectBuilder) => {
-                objectBuilder.findArray('items', {
-                    onFound: (arrayBuilder) => {
-                        arrayBuilder.removeItemAtIndex(1);
-                    }
-                });
-            }
-        });
-
-        assert.strictEqual(await builder.toString(), expected);
-    });
-
-    test('Should throw error for invalid index', () => {
-        const input = `
-export const testObject = {
-    items: ['a', 'b']
-};`;
-
-        const builder = new TypeScriptCodeBuilder();
-        builder.parseText(input);
-
-        assert.throws(() => {
-            builder.findObject('testObject', {
-                onFound: (objectBuilder) => {
-                    objectBuilder.findArray('items', {
-                        onFound: (arrayBuilder) => {
-                            arrayBuilder.removeItemAtIndex(5); // Invalid index
-                        }
-                    });
-                }
-            });
-        }, /Index 5 is out of bounds/);
-    });
-
-    test('Should handle nested objects at specified index', async () => {
-        const input = `
-export const testObject = {
-    items: [
-        { id: 1 },
-        { id: 2 },
-        { id: 3 }
-    ]
-};`;
-        const expected = `export const testObject = {\n    items: [{ id: 1 }, { id: 3 }],\n};\n`;
-
-        const builder = new TypeScriptCodeBuilder();
-        builder.parseText(input);
-
-        builder.findObject('testObject', {
-            onFound: (objectBuilder) => {
-                objectBuilder.findArray('items', {
-                    onFound: (arrayBuilder) => {
-                        arrayBuilder.removeItemAtIndex(1);
-                    }
-                });
-            }
-        });
-
-        assert.strictEqual(await builder.toString(), expected);
-    });
-
-    test('Should handle nested arrays at specified index', async () => {
-        const input = `
-export const testObject = {
-    items: [
-        [1, 2],
-        [3, 4],
-        [5, 6]
-    ]
-};`;
-        const expected = `export const testObject = {
-    items: [
-        [1, 2],
-        [5, 6],
-    ],
-};\n`;
-
-        const builder = new TypeScriptCodeBuilder();
-        builder.parseText(input);
-
-        builder.findObject('testObject', {
-            onFound: (objectBuilder) => {
-                objectBuilder.findArray('items', {
-                    onFound: (arrayBuilder) => {
-                        arrayBuilder.removeItemAtIndex(1);
-                    }
-                });
-            }
-        });
-
-        assert.strictEqual(await builder.toString(), expected);
-    });
-
-    test('Should handle array with string literals containing commas at specified index', async () => {
-        const input = `
-export const testObject = {
-    items: ['first, item', 'second, remove this', 'third, item']
-};`;
-        const expected = `export const testObject = {
-    items: ['first, item', 'third, item'],
-};\n`;
-
-        const builder = new TypeScriptCodeBuilder();
-        builder.parseText(input);
-
-        builder.findObject('testObject', {
-            onFound: (objectBuilder) => {
-                objectBuilder.findArray('items', {
-                    onFound: (arrayBuilder) => {
-                        arrayBuilder.removeItemAtIndex(1);
-                    }
-                });
-            }
-        });
-
-        assert.strictEqual(await builder.toString(), expected);
-    });
-
-    test('Remove last item from array', async () => {
-        const input = `
-export const testObject = {
-    items: ['first']
-};`;
-        const expected = `export const testObject = {
-    items: [],
-};\n`;
-
-        const builder = new TypeScriptCodeBuilder();
-        builder.parseText(input);
-
-        builder.findObject('testObject', {
-            onFound: (objectBuilder) => {
-                objectBuilder.findArray('items', {
-                    onFound: (arrayBuilder) => {
-                        arrayBuilder.removeItemAtIndex(0);
-                    }
-                });
-            }
-        });
-
-        assert.strictEqual(await builder.toString(), expected);
-    });
-
-    test('Should maintain formatting when removing last item', async () => {
-        const input = `
-export const testObject = {
-    items: [
-        'first',
-        'second',
-        'last'
-    ]
-};`;
-        const expected = `export const testObject = {\n    items: ['first', 'second'],\n};\n`;
-
-        const builder = new TypeScriptCodeBuilder();
-        builder.parseText(input);
-
-        builder.findObject('testObject', {
-            onFound: (objectBuilder) => {
-                objectBuilder.findArray('items', {
-                    onFound: (arrayBuilder) => {
-                        arrayBuilder.removeItemAtIndex(2);
-                    }
-                });
-            }
-        });
-
-        assert.strictEqual(await builder.toString(), expected);
-    });
+    const result = await builder.toString();
+    assert.strictEqual(result, expected, "Expected extra whitespace to be normalized in the updated type annotation");
+  });
 });
