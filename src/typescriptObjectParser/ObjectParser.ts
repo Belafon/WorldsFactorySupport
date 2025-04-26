@@ -20,7 +20,7 @@ export type ExtendedTokenType =
 	| 'array' // for [ ... ] literal
 	| 'literal'; // numbers, strings, booleans, etc.
 
-export interface ParsedItemToken {
+export type ParsedItemToken = {
 	type: ExtendedTokenType;
 	name?: string;
 	start: number;
@@ -35,7 +35,7 @@ export interface ParsedItemToken {
 export class SourcePointer {
 	private currentIndex = 0;
 
-	constructor(private source: string) { }
+	constructor(private readonly source: string) { }
 
 	public get position(): number {
 		return this.currentIndex;
@@ -44,22 +44,12 @@ export class SourcePointer {
 	public currentChar(): string {
 		if (this.isEOF()) return '';
 		const ch = this.source.charAt(this.currentIndex);
-		if (DEBUG)
-			console.log(
-				`SourcePointer.currentChar: at index ${this.currentIndex} returns '${ch}'`
-			);
 		return ch;
 	}
 
-	public advance(): void {
+	public moveToNextChar(): void {
 		if (!this.isEOF()) {
-			const oldIndex = this.currentIndex;
 			const newIndex = this.currentIndex + 1;
-			const substring = this.source.substring(oldIndex, newIndex);
-			if (DEBUG)
-				console.log(
-					`SourcePointer.advance: from ${oldIndex} to ${newIndex}, substring: '${substring}'`
-				);
 			this.currentIndex = newIndex;
 		}
 	}
@@ -71,23 +61,13 @@ export class SourcePointer {
 	public peek(offset: number = 0): string {
 		const idx = this.currentIndex + offset;
 		if (idx < 0 || idx >= this.source.length) {
-			if (DEBUG)
-				console.log(
-					`SourcePointer.peek: index ${idx} is out of bounds, returning empty string`
-				);
 			return '';
 		}
 		const ch = this.source.charAt(idx);
-		if (DEBUG)
-			console.log(`SourcePointer.peek: at index ${idx} returns '${ch}'`);
 		return ch;
 	}
 
 	public setPosition(newPos: number) {
-		if (DEBUG)
-			console.log(
-				`SourcePointer.setPosition: from ${this.currentIndex} to ${newPos}`
-			);
 		this.currentIndex = Math.max(0, Math.min(newPos, this.source.length));
 	}
 }
@@ -155,7 +135,7 @@ export class Tokenizer {
 
 			// 5) Fallback for single-character punctuation: { } [ ] , : etc.
 			//    We'll mark it as 'unknown' with a name = that character
-			this.pointer.advance();
+			this.pointer.moveToNextChar();
 			const token = TokenFactory.createToken(
 				'unknown',
 				startPos,
@@ -163,91 +143,52 @@ export class Tokenizer {
 				current
 			);
 			this.tokens.push(token);
-			if (DEBUG)
-				console.log(
-					`Tokenizer.tokenize: created unknown token for char '${current}'`
-				);
 		}
-		if (DEBUG) console.log("Tokenizer.tokenize: finished tokenization");
 		return this.tokens;
 	}
 
 	private tokenizeNumber(startPos: number): void {
-		if (DEBUG)
-			console.log(`Tokenizer.tokenizeNumber: starting at index ${startPos}`);
 		while (!this.pointer.isEOF() && /[0-9]/.test(this.pointer.currentChar())) {
-			this.pointer.advance();
+			this.pointer.moveToNextChar();
 		}
 		const endPos = this.pointer.position;
 		const word = this.getSourceSlice(startPos, endPos);
 		const token = TokenFactory.createToken('literal', startPos, endPos, word);
 		this.tokens.push(token);
-		if (DEBUG)
-			console.log(
-				`Tokenizer.tokenizeNumber: created literal token '${word}' from ${startPos} to ${endPos}, substring: '${this.getSourceSlice(
-					startPos,
-					endPos
-				)}'`
-			);
 	}
 
 	private tokenizeStringLiteral(startPos: number, quoteChar: string): void {
-		if (DEBUG)
-			console.log(
-				`Tokenizer.tokenizeStringLiteral: starting at index ${startPos} with quote '${quoteChar}'`
-			);
-		this.pointer.advance(); // past the opening quote
+		this.pointer.moveToNextChar(); // past the opening quote
 		while (!this.pointer.isEOF() && this.pointer.currentChar() !== quoteChar) {
-			this.pointer.advance();
+			this.pointer.moveToNextChar();
 		}
 		if (!this.pointer.isEOF()) {
-			this.pointer.advance(); // consume closing quote
+			this.pointer.moveToNextChar(); // consume closing quote
 		}
 		const endPos = this.pointer.position;
 		const value = this.getSourceSlice(startPos, endPos);
 		const token = TokenFactory.createToken('literal', startPos, endPos, value);
 		this.tokens.push(token);
-		if (DEBUG)
-			console.log(
-				`Tokenizer.tokenizeStringLiteral: created literal token '${value}' from ${startPos} to ${endPos}, substring: '${this.getSourceSlice(
-					startPos,
-					endPos
-				)}'`
-			);
 	}
 
 	private consumeWhitespace(): void {
 		const startPos = this.pointer.position;
-		if (DEBUG)
-			console.log(
-				`Tokenizer.consumeWhitespace: starting at index ${startPos}`
-			);
+
 		while (!this.pointer.isEOF() && /\s/.test(this.pointer.currentChar())) {
-			this.pointer.advance();
+			this.pointer.moveToNextChar();
 		}
 		const endPos = this.pointer.position;
 		const token = TokenFactory.createToken('whitespace', startPos, endPos);
 		this.tokens.push(token);
-		if (DEBUG)
-			console.log(
-				`Tokenizer.consumeWhitespace: consumed whitespace from ${startPos} to ${endPos}, substring: '${this.getSourceSlice(
-					startPos,
-					endPos
-				)}'`
-			);
 	}
 
 	private tokenizeIdentifierOrKeyword(startPos: number): void {
-		if (DEBUG)
-			console.log(
-				`Tokenizer.tokenizeIdentifierOrKeyword: starting at index ${startPos}`
-			);
 		let endPos = startPos;
 		while (
 			!this.pointer.isEOF() &&
 			isIdentifierPart(this.pointer.currentChar())
 		) {
-			this.pointer.advance();
+			this.pointer.moveToNextChar();
 		}
 		endPos = this.pointer.position;
 
@@ -257,17 +198,9 @@ export class Tokenizer {
 		if (recognizedType) {
 			const token = TokenFactory.createToken(recognizedType, startPos, endPos);
 			this.tokens.push(token);
-			if (DEBUG)
-				console.log(
-					`Tokenizer.tokenizeIdentifierOrKeyword: recognized keyword '${word}' as type '${recognizedType}'`
-				);
 		} else {
 			const token = TokenFactory.createToken('unknown', startPos, endPos, word);
 			this.tokens.push(token);
-			if (DEBUG)
-				console.log(
-					`Tokenizer.tokenizeIdentifierOrKeyword: unrecognized identifier '${word}', marked as unknown`
-				);
 		}
 	}
 
@@ -326,8 +259,6 @@ export class TokenStream {
 	public next(): ParsedItemToken | null {
 		if (this.isEOF()) return null;
 		const token = this.tokens[this.index++];
-		if (DEBUG)
-			console.log(`TokenStream.next: returning token ${JSON.stringify(token)}`);
 		return token;
 	}
 
@@ -337,46 +268,1551 @@ export class TokenStream {
 
 	public consumeWhitespace(): void {
 		while (!this.isEOF() && this.peek()?.type === 'whitespace') {
-			if (DEBUG)
-				console.log("TokenStream.consumeWhitespace: consuming whitespace token");
 			this.next();
 		}
 	}
 }
 
+
 /******************************************************
- * Parser for top-level TS constructs (classes, vars, etc.).
+ * Token grouping into classes, types, objects.
  ******************************************************/
-export class TypeScriptBodyParser {
-	private stream: TokenStream;
-	constructor(private source: string) {
-		const pointer = new SourcePointer(source);
-		const tokenizer = new Tokenizer(pointer);
-		const tokens = tokenizer.tokenize();
-		if (DEBUG)
-			console.log(
-				`TypeScriptBodyParser: tokenization complete with ${tokens.length} tokens`
-			);
-		this.stream = new TokenStream(tokens);
+
+/**
+ * Types of token groups that represent higher-level language constructs.
+ * Unlike individual tokens, these represent complete structures.
+ */
+export type TokenGroupType =
+	| 'CodeFile'        // Root level representing entire source file
+	| 'ClassDeclaration'    // A complete class with its body
+	| 'InterfaceDeclaration'// A complete interface with its body
+	| 'TypeDeclaration'     // A type declaration with its definition
+	| 'EnumDeclaration'     // An enum with its values
+	| 'FunctionDeclaration' // A function with its body
+	| 'MethodDeclaration'   // A method within a class/interface
+	| 'PropertyDeclaration' // A property within a class/interface
+	| 'VariableDeclaration' // A variable declaration
+	| 'ObjectLiteral'       // An object literal expression
+	| 'ArrayLiteral'        // An array literal expression
+	| 'BlockStatement'      // A block of code enclosed in { }
+	| 'ExpressionStatement' // Any expression statement
+	| 'Unknown';            // Fallback for unrecognized structures
+
+/**
+ * Represents a node in the token hierarchy tree.
+ * Can contain child nodes creating a nested structure.
+ */
+export type TokenGroup = {
+	type: TokenGroupType;
+	start: number;
+	end: number;
+	tokens: ParsedItemToken[];
+	name?: string;
+	templateParams?: string;
+	children: TokenGroup[];
+	metadata?: {
+		extends?: string;
+		implements?: string[];
+		returnType?: string;
+		typeAnnotation?: string;
+		modifiers?: string[]; // public, private, static, etc.
+	};
+}
+
+/**
+ * Responsible for transforming a flat array of tokens
+ * into a hierarchical tree structure.
+ */
+export class TokenGrouper {
+	private readonly rootGroup: TokenGroup;
+	constructor(
+		private readonly tokens: ParsedItemToken[],
+		private readonly source: string
+	) {
+		this.rootGroup = {
+			type: 'CodeFile',
+			start: 0,
+			end: source.length,
+			tokens: [],
+			children: []
+		};
 	}
 
-	private parseGenericTypeParams(): string | undefined {
+	/**
+	 * Process all tokens into a hierarchical structure
+	 * and return the root group.
+	 */
+	public group(): TokenGroup {
+		const tokenStream = new TokenStream(this.tokens);
+		this.processTokens(tokenStream, this.rootGroup);
+		return this.rootGroup;
+	}
+
+	/**
+	 * Process tokens and build the hierarchy.
+	 */
+	private processTokens(tokenStream: TokenStream, parent: TokenGroup): void {
+		while (!tokenStream.isEOF()) {
+			// Skip whitespace
+			tokenStream.consumeWhitespace();
+			if (tokenStream.isEOF()) break;
+
+			// Get the current token
+			const token = tokenStream.peek();
+			if (!token) break;
+
+			// Process based on token type
+			let group: TokenGroup | null = null;
+
+			switch (token.type) {
+				case 'class':
+					group = this.processClassDeclaration(tokenStream);
+					break;
+				case 'interface':
+					group = this.processInterfaceDeclaration(tokenStream) ?? null;
+					break;
+				case 'type':
+					group = this.processTypeDeclaration(tokenStream);
+					break;
+				case 'enum':
+					group = this.processEnumDeclaration(tokenStream);
+					break;
+				case 'function':
+					group = this.processFunctionDeclaration(tokenStream);
+					break;
+				case 'variable':
+					group = this.processVariableDeclaration(tokenStream);
+					break;
+				case 'unknown':
+					// Check if it's the start of an object or array literal
+					if (token.name === '{') {
+						group = this.processObjectLiteral(tokenStream);
+					} else if (token.name === '[') {
+						group = this.processArrayLiteral(tokenStream);
+					} else {
+						// Just advance for tokens we don't specially handle
+						tokenStream.next();
+						continue;
+					}
+					break;
+
+				default:
+					// Just advance for tokens we don't specially handle
+					tokenStream.next();
+					continue;
+			}
+
+			// If we processed a group, add it to the parent
+			if (group) {
+				parent.children.push(group);
+			}
+		}
+	}
+
+	/**
+	 * Process a class declaration and its body.
+	 */
+	private processClassDeclaration(tokenStream: TokenStream): TokenGroup | null {
+		// Store the starting position and the 'class' token
+		const classToken = tokenStream.next();
+		if (!classToken) return null;
+
+		const startTokens = [classToken];
+		const startPos = classToken.start;
+
+		// Extract the class name
+		tokenStream.consumeWhitespace();
+		const nameToken = tokenStream.next();
+		if (nameToken) startTokens.push(nameToken);
+		const className = nameToken?.name;
+
+		// Process template parameters if present
+		let templateParams: string | undefined;
+		tokenStream.consumeWhitespace();
+		if (tokenStream.peek()?.name === '<') {
+			templateParams = this.extractTemplateParams(tokenStream);
+		}
+
+		// Look for extends/implements clauses
+		let extendsClass: string | undefined;
+		let implementsInterfaces: string[] | undefined;
+
+		// Check for extends clause
+		tokenStream.consumeWhitespace();
+		let currentToken = tokenStream.peek();
+
+		if (currentToken?.name === 'extends') {
+			// Consume 'extends' token
+			startTokens.push(tokenStream.next()!);
+
+			// Consume whitespace after 'extends'
+			tokenStream.consumeWhitespace();
+
+			// Get parent class name
+			const parentClassToken = tokenStream.next();
+			if (parentClassToken) {
+				startTokens.push(parentClassToken);
+				extendsClass = parentClassToken.name;
+			}
+
+			// Update current token
+			tokenStream.consumeWhitespace();
+			currentToken = tokenStream.peek();
+		}
+
+		// Check for implements clause
+		if (currentToken?.name === 'implements') {
+			// Consume 'implements' token
+			startTokens.push(tokenStream.next()!);
+			implementsInterfaces = [];
+
+			// Process interface names (comma-separated list)
+			let processingInterfaces = true;
+
+			while (processingInterfaces && !tokenStream.isEOF()) {
+				tokenStream.consumeWhitespace();
+				const interfaceToken = tokenStream.next();
+
+				if (interfaceToken && interfaceToken.type !== 'whitespace') {
+					startTokens.push(interfaceToken);
+					if (interfaceToken.name) {
+						implementsInterfaces.push(interfaceToken.name);
+					}
+
+					// Check if there's a comma for multiple interfaces
+					tokenStream.consumeWhitespace();
+					const nextToken = tokenStream.peek();
+
+					if (nextToken?.name === ',') {
+						// Consume the comma and continue
+						startTokens.push(tokenStream.next()!);
+					} else {
+						// No more interfaces
+						processingInterfaces = false;
+					}
+				} else {
+					processingInterfaces = false;
+				}
+			}
+		}
+
+		// Process class body
+		tokenStream.consumeWhitespace();
+		const openBraceToken = tokenStream.peek();
+		if (openBraceToken?.name !== '{') {
+			// Malformed class, no opening brace
+			return null;
+		}
+
+		// Consume the opening brace
+		startTokens.push(tokenStream.next()!);
+
+		// Create the class group with what we know so far
+		const classGroup: TokenGroup = {
+			type: 'ClassDeclaration',
+			start: startPos,
+			end: -1, // Will be filled in later
+			name: className,
+			templateParams,
+			tokens: [...startTokens],
+			children: [],
+			metadata: {
+				extends: extendsClass,
+				implements: implementsInterfaces,
+				modifiers: [] // Would be filled with public, abstract, etc.
+			}
+		};
+
+		// Process the closing brace and find the end position
+		let braceDepth = 1;
+		while (!tokenStream.isEOF() && braceDepth > 0) {
+			const token = tokenStream.next();
+			if (!token) break;
+
+			if (token.name === '{') {
+				braceDepth++;
+			} else if (token.name === '}') {
+				braceDepth--;
+				if (braceDepth === 0) {
+					classGroup.end = token.end;
+				}
+			}
+		}
+
+		// If we didn't find a proper closing brace, use the last token position
+		if (classGroup.end === -1) {
+			classGroup.end = classToken.end;
+		}
+
+		return classGroup;
+	}
+
+	/**
+	 * Process an interface declaration and its body.
+	 * @returns A TokenGroup representing the interface declaration, or null if invalid
+	 */
+	private processInterfaceDeclaration(tokenStream: TokenStream): TokenGroup | null | undefined {
+		// Store the starting position and the 'interface' token
+		const interfaceToken = tokenStream.next();
+		if (!interfaceToken) return null;
+
+		const startTokens = [interfaceToken];
+		const startPos = interfaceToken.start;
+
+		// Extract the interface name
+		tokenStream.consumeWhitespace();
+		const nameToken = tokenStream.next();
+		if (nameToken) startTokens.push(nameToken);
+		const interfaceName = nameToken?.name;
+
+		// Process template parameters if present (e.g., interface MyInterface<T>)
+		let templateParams: string | undefined;
+		tokenStream.consumeWhitespace();
+		if (tokenStream.peek()?.name === '<') {
+			const openAngleToken = tokenStream.next();
+			if (openAngleToken) startTokens.push(openAngleToken);
+
+			// Collect all tokens until closing angle bracket
+			let templateContent = '';
+			let angleDepth = 1;
+
+			while (!tokenStream.isEOF() && angleDepth > 0) {
+				const token = tokenStream.next();
+				if (!token) break;
+
+				startTokens.push(token);
+
+				if (token.name === '<') {
+					angleDepth++;
+				} else if (token.name === '>') {
+					angleDepth--;
+				}
+
+				if (angleDepth > 0 && token.name) {
+					templateContent += token.name;
+				}
+			}
+
+			if (templateContent) {
+				templateParams = templateContent;
+			}
+		}
+
+		// Look for extends clause (e.g., interface MyInterface extends BaseInterface)
+		let extendsInterfaces: string[] = [];
+		tokenStream.consumeWhitespace();
+
+		if (tokenStream.peek()?.name === 'extends') {
+			const extendsToken = tokenStream.next();
+			if (extendsToken) startTokens.push(extendsToken);
+
+			// Process extended interfaces (comma-separated list)
+			let processingExtends = true;
+
+			while (processingExtends && !tokenStream.isEOF()) {
+				tokenStream.consumeWhitespace();
+				const extendedInterface = tokenStream.next();
+
+				if (extendedInterface && extendedInterface.type !== 'whitespace') {
+					startTokens.push(extendedInterface);
+					if (extendedInterface.name) {
+						extendsInterfaces.push(extendedInterface.name);
+					}
+
+					// Check if there's a comma for multiple extends
+					tokenStream.consumeWhitespace();
+					const nextToken = tokenStream.peek();
+
+					if (nextToken?.name === ',') {
+						const commaToken = tokenStream.next();
+						if (commaToken) startTokens.push(commaToken);
+					} else {
+						processingExtends = false;
+					}
+				} else {
+					processingExtends = false;
+				}
+			}
+		}
+
+		// Process interface body
+		tokenStream.consumeWhitespace();
+		const openBraceToken = tokenStream.peek();
+
+		if (!openBraceToken || openBraceToken.name !== '{') {
+			// Malformed interface, no opening brace
+			return null;
+		}
+
+		tokenStream.next(); // Consume the opening brace
+		startTokens.push(openBraceToken);
+
+		// Create the interface group
+		const interfaceGroup: TokenGroup = {
+			type: 'InterfaceDeclaration',
+			start: startPos,
+			end: -1, // Will be filled in later
+			name: interfaceName,
+			templateParams,
+			tokens: [...startTokens],
+			children: [],
+			metadata: {
+				extends: extendsInterfaces.length > 0 ? extendsInterfaces.join(', ') : undefined,
+				modifiers: [] // Would be filled with export, declare, etc.
+			}
+		};
+
+		// Process interface members
+		let braceDepth = 1;
+		let bodyTokens: ParsedItemToken[] = [];
+
+		while (!tokenStream.isEOF() && braceDepth > 0) {
+			const token = tokenStream.next();
+			if (!token) break;
+
+			bodyTokens.push(token);
+
+			if (token.name === '{') {
+				braceDepth++;
+			} else if (token.name === '}') {
+				braceDepth--;
+				if (braceDepth === 0) {
+					// We've found the closing brace
+					interfaceGroup.end = token.end;
+				}
+			}
+		}
+
+		// In a real implementation, we would process the body tokens to identify
+		// properties and methods, then add them as children to the interfaceGroup.
+		// This would involve scanning for patterns like:
+		// - propertyName: type;
+		// - methodName(params): returnType;
+
+		// For this demonstration, we'll leave it as is
+		interfaceGroup.tokens = [...interfaceGroup.tokens, ...bodyTokens];
+
+		if (interfaceGroup.end === -1) {
+			// If we didn't find a closing brace, use the last token's end
+			const lastToken = bodyTokens[bodyTokens.length - 1];
+			interfaceGroup.end = lastToken ? lastToken.end : startPos;
+		}
+
+		return interfaceGroup;
+	}
+
+	/**
+	 * Process a type declaration.
+	 */
+	private processTypeDeclaration(tokenStream: TokenStream): TokenGroup | null {
+		// Store the starting position and the 'type' token
+		const typeToken = tokenStream.next();
+		if (!typeToken) return null;
+
+		const startPos = typeToken.start;
+		let allTokens = [typeToken];
+
+		// Extract the type name
+		tokenStream.consumeWhitespace();
+		const nameToken = tokenStream.next();
+		if (!nameToken) return null; // Malformed type declaration, no name
+		allTokens.push(nameToken);
+		const typeName = nameToken.name;
+
+		// Process template parameters if present (e.g., type MyType<T>)
+		let templateParams: string | undefined;
+		tokenStream.consumeWhitespace();
+		if (tokenStream.peek()?.name === '<') {
+			templateParams = this.extractTemplateParams(tokenStream);
+		}
+
+		// Look for the '=' sign
+		tokenStream.consumeWhitespace();
+		const equalsToken = tokenStream.peek();
+		if (!equalsToken || equalsToken.name !== '=') {
+			// Malformed type declaration, no '=' sign
+			return null;
+		}
+
+		// Consume the '=' sign
+		tokenStream.next();
+		allTokens.push(equalsToken);
+
+		// Create the type group
+		const typeGroup: TokenGroup = {
+			type: 'TypeDeclaration',
+			start: startPos,
+			end: -1, // Will be filled in later
+			name: typeName,
+			templateParams,
+			tokens: allTokens, // Will be updated with all tokens
+			children: [],
+			metadata: {
+				typeAnnotation: undefined, // Will be filled with the actual type definition
+				modifiers: [] // Would be filled with export, declare, etc.
+			}
+		};
+
+		// Process the type definition until we reach a semicolon
+		// We need to keep track of nested structures
+		let typeDefinition = '';
+		let reachedSemicolon = false;
+		let braceDepth = 0;
+		let angleDepth = 0;
+		let squareDepth = 0;
+		let parenDepth = 0;
+
+		// Track previous token to handle special cases like arrow function
+		let prevToken: ParsedItemToken | null = null;
+
+		while (!tokenStream.isEOF() && !reachedSemicolon) {
+			const token = tokenStream.next();
+			if (!token) break;
+
+			allTokens.push(token);
+
+			// Build up the type definition string, with special case handling for arrow functions
+			if (token.name) {
+				// Special case for arrow function: don't add space between = and >
+				if (prevToken && prevToken.name === '=' && token.name === '>') {
+					// Replace the last space with empty string to join = and >
+					if (typeDefinition.endsWith(' ')) {
+						typeDefinition = typeDefinition.slice(0, -1) + token.name + ' ';
+					} else {
+						typeDefinition += token.name + ' ';
+					}
+				} else {
+					typeDefinition += token.name + ' ';
+				}
+			}
+
+			// Update previous token
+			prevToken = token;
+
+			// Track nested structure depths
+			if (token.name === '{') {
+				braceDepth++;
+			} else if (token.name === '}') {
+				braceDepth--;
+			} else if (token.name === '<') {
+				angleDepth++;
+			} else if (token.name === '>') {
+				angleDepth--;
+			} else if (token.name === '[') {
+				squareDepth++;
+			} else if (token.name === ']') {
+				squareDepth--;
+			} else if (token.name === '(') {
+				parenDepth++;
+			} else if (token.name === ')') {
+				parenDepth--;
+			} else if (token.name === ';' && braceDepth === 0 && angleDepth === 0 &&
+				squareDepth === 0 && parenDepth === 0) {
+				// We've found the end of the type declaration
+				// But only if we're not inside any nested structure
+				reachedSemicolon = true;
+				typeGroup.end = token.end;
+			}
+		}
+
+		// Update tokens in the type group
+		typeGroup.tokens = allTokens;
+
+		// Save the type definition in metadata
+		if (typeDefinition) {
+			typeGroup.metadata!.typeAnnotation = typeDefinition.trim();
+		}
+
+		if (typeGroup.end === -1) {
+			// If we didn't find a semicolon, use the last token's end
+			const lastToken = allTokens[allTokens.length - 1];
+			typeGroup.end = lastToken ? lastToken.end : startPos;
+		}
+
+		return typeGroup;
+	}
+
+	/**
+	 * Process an enum declaration and its values.
+	 */
+	private processEnumDeclaration(tokenStream: TokenStream): TokenGroup | null {
+		// Store the starting position and the 'enum' token
+		const enumToken = tokenStream.next();
+		if (!enumToken) return null;
+
+		const startTokens = [enumToken];
+		const startPos = enumToken.start;
+
+		// Extract the enum name
+		tokenStream.consumeWhitespace();
+		const nameToken = tokenStream.next();
+		if (nameToken) startTokens.push(nameToken);
+		const enumName = nameToken?.name;
+
+		// Process enum body
+		tokenStream.consumeWhitespace();
+		const openBraceToken = tokenStream.peek();
+
+		if (!openBraceToken || openBraceToken.name !== '{') {
+			// Malformed enum, no opening brace
+			return null;
+		}
+
+		// Consume the opening brace
+		tokenStream.next();
+		startTokens.push(openBraceToken);
+
+		// Create the enum group
+		const enumGroup: TokenGroup = {
+			type: 'EnumDeclaration',
+			start: startPos,
+			end: -1, // Will be filled in later
+			name: enumName,
+			tokens: [...startTokens],
+			children: [],
+			metadata: {
+				modifiers: [] // Would be filled with export, declare, etc.
+			}
+		};
+
+		// Process the enum body (collect all tokens until closing brace)
+		let braceDepth = 1;
+		let bodyTokens: ParsedItemToken[] = [];
+
+		while (!tokenStream.isEOF() && braceDepth > 0) {
+			const token = tokenStream.next();
+			if (!token) break;
+
+			bodyTokens.push(token);
+
+			if (token.name === '{') {
+				braceDepth++;
+			} else if (token.name === '}') {
+				braceDepth--;
+				if (braceDepth === 0) {
+					// We've found the closing brace
+					enumGroup.end = token.end;
+				}
+			}
+		}
+
+		// Update tokens in the enum group
+		enumGroup.tokens = [...enumGroup.tokens, ...bodyTokens];
+
+		if (enumGroup.end === -1) {
+			// If we didn't find a closing brace, use the last token's end
+			const lastToken = bodyTokens[bodyTokens.length - 1];
+			enumGroup.end = lastToken ? lastToken.end : startPos;
+		}
+
+		return enumGroup;
+	}
+
+	/**
+	 * Process a function declaration and its body.
+	 */
+	private processFunctionDeclaration(tokenStream: TokenStream): TokenGroup | null {
+		// Store the starting position and the 'function' token
+		const functionToken = tokenStream.next();
+		if (!functionToken) return null;
+
+		const allTokens = [functionToken];
+		const startPos = functionToken.start;
+
+		// Extract the function name (optional for function expressions)
+		tokenStream.consumeWhitespace();
+		let functionName: string | undefined;
+		const nameOrParenToken = tokenStream.peek();
+
+		if (nameOrParenToken && nameOrParenToken.name !== '(') {
+			// We have a named function
+			const nameToken = tokenStream.next();
+			if (nameToken) {
+				allTokens.push(nameToken);
+				functionName = nameToken.name;
+
+				// Check for additional identifier after function name (for case: function async fetchData())
+				tokenStream.consumeWhitespace();
+				const potentialSecondNameToken = tokenStream.peek();
+				if (potentialSecondNameToken &&
+					potentialSecondNameToken.name !== '(' &&
+					potentialSecondNameToken.name !== '=' &&
+					potentialSecondNameToken.name !== '<' &&
+					potentialSecondNameToken.type === 'unknown') {
+
+					// Found a second identifier, treat the first one as a modifier or just leave as is
+					// Comment: In a proper implementation, "async" would be collected as a modifier
+
+					// No change to functionName - the first token remains the function name
+					// Just consume the second token and add it to allTokens
+					const secondToken = tokenStream.next();
+					if (secondToken) {
+						allTokens.push(secondToken);
+					}
+				}
+			}
+		}
+
+		// Process template parameters if present
+		tokenStream.consumeWhitespace();
+		let templateParams: string | undefined;
+		if (tokenStream.peek()?.name === '<') {
+			templateParams = this.extractTemplateParams(tokenStream);
+		}
+
+		// Check for equals sign after function name (non-standard syntax)
+		tokenStream.consumeWhitespace();
+		let hasEquals = false;
+		if (tokenStream.peek()?.name === '=') {
+			const equalsToken = tokenStream.next();
+			if (equalsToken) {
+				allTokens.push(equalsToken);
+				hasEquals = true;
+			}
+			tokenStream.consumeWhitespace();
+		}
+
+		// Process parameter list
+		let nextToken = tokenStream.peek();
+
+		if (!nextToken) {
+			return null;
+		}
+
+		// Check if we have a parameter list
+		if (nextToken.name === '(') {
+			// Consume the opening parenthesis
+			tokenStream.next();
+			allTokens.push(nextToken);
+
+			// Collect parameter tokens until closing parenthesis
+			let parenDepth = 1;
+
+			while (!tokenStream.isEOF() && parenDepth > 0) {
+				const token = tokenStream.next();
+				if (!token) break;
+
+				allTokens.push(token);
+
+				if (token.name === '(') {
+					parenDepth++;
+				} else if (token.name === ')') {
+					parenDepth--;
+				}
+			}
+		} else if (!hasEquals) {
+			// If there's no equals sign and no parameter list, it's malformed
+			// Only return null if we haven't seen an equals sign, as the equals might
+			// indicate a different syntax pattern
+			return null;
+		}
+
+		// Check for return type annotation
+		tokenStream.consumeWhitespace();
+		let returnType: string | undefined;
+		let nextSymbol = tokenStream.peek();
+
+		if (nextSymbol?.name === ':') {
+			// Consume colon
+			const colonToken = tokenStream.next();
+			if (colonToken) allTokens.push(colonToken);
+
+			// Build up the return type string
+			let returnTypeStr = '';
+			let foundBodyStart = false;
+			let angleDepth = 0;
+			let braceDepth = 0;
+			let parenDepth = 0;
+
+			// First get all tokens of the return type
+			let returnTypeTokens: ParsedItemToken[] = [];
+
+			while (!tokenStream.isEOF() && !foundBodyStart) {
+				tokenStream.consumeWhitespace();
+				const token = tokenStream.peek();
+				if (!token) break;
+
+				// Update bracket depths BEFORE checking for body start
+				let potentialDepthChange = 0;
+				if (token.name === '<') potentialDepthChange = 1;
+				else if (token.name === '>') potentialDepthChange = -1;
+				else if (token.name === '{') potentialDepthChange = 1;
+				else if (token.name === '}') potentialDepthChange = -1;
+				else if (token.name === '(') potentialDepthChange = 1;
+				else if (token.name === ')') potentialDepthChange = -1;
+
+				// Check for the start of the function body
+				// Important: We only consider '{' as body start if we're at root level (braceDepth === 0)
+				// and after we've completed a type expression (all levels of braces balanced)
+				if (token.name === '{' && angleDepth === 0 && braceDepth === 0 && parenDepth === 0 &&
+					(returnTypeTokens.length > 0 && returnTypeTokens[returnTypeTokens.length - 1].name === '}')) {
+					foundBodyStart = true;
+					break;
+				}
+
+				// Check for arrow function start
+				if (token.name === '=>' && angleDepth === 0 && braceDepth === 0 && parenDepth === 0) {
+					foundBodyStart = true;
+					break;
+				}
+
+				// Check for equals sign (which could be part of arrow)
+				if (token.name === '=' && angleDepth === 0 && braceDepth === 0 && parenDepth === 0) {
+					// Consume equals and look for '>'
+					const equalsToken = tokenStream.next();
+					if (equalsToken) {
+						allTokens.push(equalsToken);
+						returnTypeTokens.push(equalsToken);
+
+						// Add to return type string
+						returnTypeStr += equalsToken.name + ' ';
+
+						// Check next token for '>'
+						tokenStream.consumeWhitespace();
+						const nextAfterEquals = tokenStream.peek();
+
+						if (nextAfterEquals?.name === '>') {
+							// This is an arrow function
+							foundBodyStart = true;
+							break;
+						}
+					}
+					continue; // Skip the standard token processing below since we processed the equals
+				}
+
+				// Consume the token as part of the return type
+				const returnTypeToken = tokenStream.next();
+				if (!returnTypeToken) break;
+
+				allTokens.push(returnTypeToken);
+				returnTypeTokens.push(returnTypeToken);
+
+				// Apply the depth changes now that we've consumed the token
+				if (returnTypeToken.name === '<') angleDepth++;
+				else if (returnTypeToken.name === '>') angleDepth--;
+				else if (returnTypeToken.name === '{') braceDepth++;
+				else if (returnTypeToken.name === '}') braceDepth--;
+				else if (returnTypeToken.name === '(') parenDepth++;
+				else if (returnTypeToken.name === ')') parenDepth--;
+
+				// Add to return type string
+				if (returnTypeToken.name) {
+					returnTypeStr += returnTypeToken.name + ' ';
+				}
+
+				// If we just closed a brace at root level, we might be at the end of return type
+				if (returnTypeToken.name === '}' && braceDepth === 0 && angleDepth === 0 && parenDepth === 0) {
+					// Peek ahead to see if next non-whitespace token is a '{'
+					tokenStream.consumeWhitespace();
+					if (tokenStream.peek()?.name === '{') {
+						foundBodyStart = true;
+						break;
+					}
+				}
+			}
+
+			// Set the return type
+			returnType = returnTypeStr.trim();
+		}
+
+		// Create the function group
+		const functionGroup: TokenGroup = {
+			type: 'FunctionDeclaration',
+			start: startPos,
+			end: -1, // Will be filled in later
+			name: functionName,
+			templateParams,
+			tokens: allTokens, // Will be updated
+			children: [],
+			metadata: {
+				returnType,
+				modifiers: [] // Could contain export, async, etc.
+			}
+		};
+
+		// Check for arrow function syntax
+		let isArrowFunction = false;
+		tokenStream.consumeWhitespace();
+
+		// Look for => as either a single token or as two consecutive tokens (= followed by >)
+		if (tokenStream.peek()?.name === '=>') {
+			// Single token for arrow
+			const arrowToken = tokenStream.next();
+			if (arrowToken) allTokens.push(arrowToken);
+			isArrowFunction = true;
+		} else if (tokenStream.peek()?.name === '=') {
+			// Consume the equals token
+			const equalsToken = tokenStream.next();
+			if (equalsToken) allTokens.push(equalsToken);
+
+			// Check if the next token is '>'
+			tokenStream.consumeWhitespace();
+			if (tokenStream.peek()?.name === '>') {
+				const gtToken = tokenStream.next();
+				if (gtToken) allTokens.push(gtToken);
+				isArrowFunction = true;
+			}
+		}
+
+		// Process function body
+		tokenStream.consumeWhitespace();
+		const bodyStartToken = tokenStream.peek();
+
+		if (!bodyStartToken) {
+			// No body, use what we have
+			const lastToken = allTokens[allTokens.length - 1];
+			functionGroup.end = lastToken ? lastToken.end : startPos;
+			functionGroup.tokens = allTokens;
+			return functionGroup;
+		}
+
+		// Handle block body with braces
+		if (bodyStartToken.name === '{') {
+			const openBraceToken = tokenStream.next();
+			if (openBraceToken) allTokens.push(openBraceToken);
+
+			// Process the function body until matching closing brace
+			let braceDepth = 1;
+
+			while (!tokenStream.isEOF() && braceDepth > 0) {
+				const token = tokenStream.next();
+				if (!token) break;
+
+				allTokens.push(token);
+
+				if (token.name === '{') {
+					braceDepth++;
+				} else if (token.name === '}') {
+					braceDepth--;
+					if (braceDepth === 0) {
+						// Found the end of the function
+						functionGroup.end = token.end;
+					}
+				}
+			}
+		} else if (isArrowFunction) {
+			// Arrow function with expression body (no braces)
+			// For arrow functions with expression bodies, consume tokens until semicolon
+			let foundEnd = false;
+
+			while (!tokenStream.isEOF() && !foundEnd) {
+				const token = tokenStream.peek();
+				if (!token) break;
+
+				if (token.name === ';') {
+					// Found explicit end of expression
+					const semicolonToken = tokenStream.next();
+					if (semicolonToken) allTokens.push(semicolonToken);
+					functionGroup.end = semicolonToken ? semicolonToken.end : -1;
+					foundEnd = true;
+				} else if (token.type === 'class' || token.type === 'interface' ||
+					token.type === 'function' || token.type === 'type' ||
+					token.type === 'enum') {
+					// Found start of another declaration
+					foundEnd = true;
+				} else {
+					// Still part of the expression body
+					const exprToken = tokenStream.next();
+					if (exprToken) allTokens.push(exprToken);
+				}
+			}
+		} else {
+			// Just a declaration with no body, use what we have
+			functionGroup.end = bodyStartToken.start; // Don't consume the token
+		}
+
+		// Final fallback for end position
+		if (functionGroup.end === -1) {
+			const lastToken = allTokens[allTokens.length - 1];
+			functionGroup.end = lastToken ? lastToken.end : startPos;
+		}
+
+		// Update the tokens array
+		functionGroup.tokens = allTokens;
+
+		return functionGroup;
+	}
+
+	/**
+	 * Process a variable declaration.
+	 */
+	private processVariableDeclaration(tokenStream: TokenStream): TokenGroup | null {
+		// Store the starting position and the 'variable' token (let, const, or var)
+		const variableToken = tokenStream.next();
+		if (!variableToken) return null;
+
+		const startPos = variableToken.start;
+		const allTokens = [variableToken];
+
+		// Extract the actual keyword (let, const, var) from the source
+		// Since the tokenizer just marks it as "variable" type
+		const declarationKeyword = this.source.substring(variableToken.start, variableToken.end).trim();
+
+		if (DEBUG) {
+			console.log(`TokenGrouper.processVariableDeclaration: found ${declarationKeyword} at position ${startPos}`);
+		}
+
+		// Create the variable group
+		const variableGroup: TokenGroup = {
+			type: 'VariableDeclaration',
+			start: startPos,
+			end: -1, // Will be filled in later
+			name: undefined, // Will be filled in as we process
+			tokens: allTokens, // Will be updated with all tokens
+			children: [],
+			metadata: {
+				modifiers: [declarationKeyword], // Add the actual keyword as a modifier
+				typeAnnotation: undefined // Will be filled if there's a type annotation
+			}
+		};
+
+		// Skip whitespace after the variable keyword
+		tokenStream.consumeWhitespace();
+
+		// Check if we have an object or array destructuring pattern or malformed declaration
+		const nextToken = tokenStream.peek();
+
+		// Check for malformed declaration (e.g., "let = 42;")
+		if (nextToken && nextToken.name === '=') {
+			// Mark as a malformed declaration
+			variableGroup.name = `${declarationKeyword}_Identifier`;
+
+			if (DEBUG) {
+				console.log(`TokenGrouper.processVariableDeclaration: found malformed declaration, no variable name before =`);
+			}
+
+			// We don't consume the token yet, it will be handled in the initializer section
+		} else if (nextToken && nextToken.name === '{') {
+			// Object destructuring pattern
+			variableGroup.name = `${declarationKeyword}_ObjectPattern`;
+
+			// Consume the opening brace
+			const openBrace = tokenStream.next();
+			if (openBrace) allTokens.push(openBrace);
+
+			// Process the destructuring pattern
+			let braceDepth = 1; // Start with depth 1 since we just consumed an opening brace
+			while (!tokenStream.isEOF() && braceDepth > 0) {
+				const token = tokenStream.next();
+				if (!token) break;
+
+				allTokens.push(token);
+
+				if (token.name === '{') {
+					braceDepth++;
+				} else if (token.name === '}') {
+					braceDepth--;
+				}
+			}
+
+			if (DEBUG) {
+				console.log(`TokenGrouper.processVariableDeclaration: processed object destructuring pattern`);
+			}
+		} else if (nextToken && nextToken.name === '[') {
+			// Array destructuring pattern
+			variableGroup.name = `${declarationKeyword}_ArrayPattern`;
+
+			// Consume the opening bracket
+			const openBracket = tokenStream.next();
+			if (openBracket) allTokens.push(openBracket);
+
+			// Process the destructuring pattern
+			let bracketDepth = 1; // Start with depth 1 since we just consumed an opening bracket
+			while (!tokenStream.isEOF() && bracketDepth > 0) {
+				const token = tokenStream.next();
+				if (!token) break;
+
+				allTokens.push(token);
+
+				if (token.name === '[') {
+					bracketDepth++;
+				} else if (token.name === ']') {
+					bracketDepth--;
+				}
+			}
+
+			if (DEBUG) {
+				console.log(`TokenGrouper.processVariableDeclaration: processed array destructuring pattern`);
+			}
+		} else {
+			// Regular variable name
+			const nameToken = tokenStream.next();
+			if (nameToken) {
+				allTokens.push(nameToken);
+
+				// Set the variable name from the token
+				if (nameToken.name) {
+					variableGroup.name = nameToken.name;
+
+					if (DEBUG) {
+						console.log(`TokenGrouper.processVariableDeclaration: processed name "${variableGroup.name}"`);
+					}
+				} else if (nameToken.type === 'unknown') {
+					// Handle case where token has type but no name
+					variableGroup.name = `${declarationKeyword}_Identifier`;
+				}
+			}
+		}
+
+		// Process the rest of the variable declaration
+		let braceDepth = 0;
+		let squareDepth = 0;
+		let parenDepth = 0;
+		let foundTypeAnnotation = false;
+		let typeAnnotation = '';
+
+		while (!tokenStream.isEOF()) {
+			tokenStream.consumeWhitespace();
+			const token = tokenStream.peek();
+			if (!token) break;
+
+			// Check for end of declaration
+			if (token.name === ';' && braceDepth === 0 && squareDepth === 0 && parenDepth === 0) {
+				// End of this declaration
+				const semicolonToken = tokenStream.next();
+				if (semicolonToken) {
+					allTokens.push(semicolonToken);
+					variableGroup.end = semicolonToken.end;
+				}
+				break;
+			} else if (token.name === ',' && braceDepth === 0 && squareDepth === 0 && parenDepth === 0) {
+				// Multiple declarations in a statement - we'll stop at the comma
+				variableGroup.end = token.start;
+				break;
+			}
+
+			// Process type annotation if we find a colon
+			if (token.name === ':' && !foundTypeAnnotation) {
+				foundTypeAnnotation = true;
+				const colonToken = tokenStream.next();
+				if (colonToken) allTokens.push(colonToken);
+
+				// Collect the type annotation until we hit an equals sign or semicolon
+				let arrowFound = false;
+				let continueAfterArrow = false;
+
+				while (!tokenStream.isEOF()) {
+					tokenStream.consumeWhitespace();
+					const typeToken = tokenStream.peek();
+					if (!typeToken) break;
+
+					// In function type annotations (data) => void, we need to include the arrow and return type
+					if (typeToken.name === '=' && !arrowFound) {
+						// Check if this might be part of an arrow (=>)
+						const possibleArrowToken = tokenStream.next();
+						if (possibleArrowToken) allTokens.push(possibleArrowToken);
+
+						// Peek to see if next token is ">"
+						tokenStream.consumeWhitespace();
+						const nextAfterEquals = tokenStream.peek();
+
+						if (nextAfterEquals && nextAfterEquals.name === '>') {
+							// It's an arrow function type
+							arrowFound = true;
+							const arrowRightToken = tokenStream.next();
+							if (arrowRightToken) allTokens.push(arrowRightToken);
+
+							// Add both tokens to type annotation
+							typeAnnotation += "=> ";
+
+							// Continue collecting the return type
+							continueAfterArrow = true;
+						} else {
+							// It's just an equals sign, so it's the initializer
+							if (braceDepth === 0 && squareDepth === 0 && parenDepth === 0) {
+								// Don't add the equals to the type annotation
+								break;
+							}
+
+							// Otherwise, it's part of the type (like in a conditional type)
+							typeAnnotation += "= ";
+						}
+						continue;
+					}
+
+					// Handle complete arrow token
+					if (typeToken.name === '=>' && !arrowFound) {
+						arrowFound = true;
+						const arrowToken = tokenStream.next();
+						if (arrowToken) allTokens.push(arrowToken);
+
+						// Add to type annotation
+						typeAnnotation += "=> ";
+
+						// Continue collecting the return type
+						continueAfterArrow = true;
+						continue;
+					}
+
+					// If we've found an arrow and processed the return type parts, and now reaching '='
+					// at the root level, it's time to stop the type annotation
+					if (arrowFound && continueAfterArrow && typeToken.name === '=' &&
+						braceDepth === 0 && squareDepth === 0 && parenDepth === 0) {
+						break;
+					}
+
+					// Stop at equals sign or semicolon or comma (if at root level)
+					if ((typeToken.name === '=' || typeToken.name === ';' || typeToken.name === ',') &&
+						braceDepth === 0 && squareDepth === 0 && parenDepth === 0 && !continueAfterArrow) {
+						break;
+					}
+
+					// Add token to type annotation
+					const consumedTypeToken = tokenStream.next();
+					if (consumedTypeToken) {
+						allTokens.push(consumedTypeToken);
+
+						// Update depth counters
+						if (consumedTypeToken.name === '{') braceDepth++;
+						else if (consumedTypeToken.name === '}') braceDepth--;
+						else if (consumedTypeToken.name === '[') squareDepth++;
+						else if (consumedTypeToken.name === ']') squareDepth--;
+						else if (consumedTypeToken.name === '(') parenDepth++;
+						else if (consumedTypeToken.name === ')') parenDepth--;
+
+						// Add to type annotation string
+						if (consumedTypeToken.name) {
+							typeAnnotation += consumedTypeToken.name + ' ';
+						}
+
+						// If we just completed a return type after an arrow, check if the next token is '='
+						if (continueAfterArrow && braceDepth === 0 && squareDepth === 0 && parenDepth === 0) {
+							tokenStream.consumeWhitespace();
+							const nextToken = tokenStream.peek();
+							if (nextToken && nextToken.name === '=') {
+								continueAfterArrow = false; // Stop continuing after the return type
+								break;
+							}
+						}
+					}
+				}
+
+				// Save the type annotation
+				if (typeAnnotation) {
+					variableGroup.metadata!.typeAnnotation = typeAnnotation.trim();
+
+					if (DEBUG) {
+						console.log(`TokenGrouper.processVariableDeclaration: processed type annotation "${typeAnnotation.trim()}"`);
+					}
+				}
+
+				continue;
+			}
+
+			// Handle initializer
+			if (token.name === '=') {
+				const equalsToken = tokenStream.next();
+				if (equalsToken) allTokens.push(equalsToken);
+
+				// Reset depth counters for the initializer
+				braceDepth = 0;
+				squareDepth = 0;
+				parenDepth = 0;
+
+				// Collect all tokens for the initializer until semicolon or comma
+				while (!tokenStream.isEOF()) {
+					tokenStream.consumeWhitespace();
+					const initToken = tokenStream.peek();
+					if (!initToken) break;
+
+					// Stop at semicolon or comma (if at root level)
+					if ((initToken.name === ';' || initToken.name === ',') &&
+						braceDepth === 0 && squareDepth === 0 && parenDepth === 0) {
+						break;
+					}
+
+					// Add token to initializer
+					const consumedInitToken = tokenStream.next();
+					if (consumedInitToken) {
+						allTokens.push(consumedInitToken);
+
+						// Update depth counters
+						if (consumedInitToken.name === '{') braceDepth++;
+						else if (consumedInitToken.name === '}') braceDepth--;
+						else if (consumedInitToken.name === '[') squareDepth++;
+						else if (consumedInitToken.name === ']') squareDepth--;
+						else if (consumedInitToken.name === '(') parenDepth++;
+						else if (consumedInitToken.name === ')') parenDepth--;
+					}
+				}
+
+				if (DEBUG) {
+					console.log(`TokenGrouper.processVariableDeclaration: processed initializer`);
+				}
+
+				continue;
+			}
+
+			// Any other token (shouldn't reach here in well-formed code)
+			const otherToken = tokenStream.next();
+			if (otherToken) allTokens.push(otherToken);
+		}
+
+		// If we didn't find an explicit end, use the last token's end
+		if (variableGroup.end === -1) {
+			const lastToken = allTokens[allTokens.length - 1];
+			variableGroup.end = lastToken ? lastToken.end : startPos;
+		}
+
+		// Update the tokens array
+		variableGroup.tokens = allTokens;
+
+		return variableGroup;
+	}
+
+	/**
+	 * Process an object literal.
+	 */
+	private processObjectLiteral(tokenStream: TokenStream): TokenGroup | null {
+		// Expect the opening brace
+		const openBraceToken = tokenStream.next();
+		if (!openBraceToken || openBraceToken.name !== '{') {
+			if (DEBUG) {
+				console.log(`TokenGrouper.processObjectLiteral: not an object literal, missing opening brace`);
+			}
+			return null; // Not an object literal
+		}
+
+		const startPos = openBraceToken.start;
+		let allTokens = [openBraceToken];
+
+		if (DEBUG) {
+			console.log(`TokenGrouper.processObjectLiteral: starting to process object literal at position ${startPos}`);
+		}
+
+		// Create the object literal group
+		const objectGroup: TokenGroup = {
+			type: 'ObjectLiteral',
+			start: startPos,
+			end: -1, // Will be filled in later
+			tokens: allTokens,
+			children: [],
+			metadata: {}
+		};
+
+		// Process the object body until we find the closing brace
+		let braceDepth = 1; // Start at 1 for the opening brace
+		let squareBracketDepth = 0;
+		let parenthesesDepth = 0;
+
+		while (!tokenStream.isEOF() && braceDepth > 0) {
+			const token = tokenStream.next();
+			if (!token) break;
+
+			allTokens.push(token);
+
+			if (DEBUG) {
+				console.log(`TokenGrouper.processObjectLiteral: processing token ${JSON.stringify(token)}`);
+			}
+
+			// Track nesting depth
+			if (token.name === '{') {
+				braceDepth++;
+				if (DEBUG) {
+					console.log(`TokenGrouper.processObjectLiteral: found opening brace, depth now ${braceDepth}`);
+				}
+			} else if (token.name === '}') {
+				braceDepth--;
+				if (DEBUG) {
+					console.log(`TokenGrouper.processObjectLiteral: found closing brace, depth now ${braceDepth}`);
+				}
+				if (braceDepth === 0) {
+					// We've found the closing brace
+					objectGroup.end = token.end;
+					if (DEBUG) {
+						console.log(`TokenGrouper.processObjectLiteral: object literal ends at position ${token.end}`);
+					}
+				}
+			} else if (token.name === '[') {
+				squareBracketDepth++;
+			} else if (token.name === ']') {
+				squareBracketDepth--;
+			} else if (token.name === '(') {
+				parenthesesDepth++;
+			} else if (token.name === ')') {
+				parenthesesDepth--;
+			}
+		}
+
+		// If we didn't find a proper closing brace, use the last token position
+		if (objectGroup.end === -1) {
+			const lastToken = allTokens[allTokens.length - 1];
+			objectGroup.end = lastToken ? lastToken.end : startPos;
+			if (DEBUG) {
+				console.log(`TokenGrouper.processObjectLiteral: no closing brace found, using end position ${objectGroup.end}`);
+			}
+		}
+
+		// Update tokens
+		objectGroup.tokens = allTokens;
+
+		if (DEBUG) {
+			console.log(`TokenGrouper.processObjectLiteral: completed processing object literal, token count: ${allTokens.length}`);
+		}
+
+		return objectGroup;
+	}
+
+	/**
+	 * Process an array literal.
+	 * Parses array literals, handling nested arrays, objects, and other elements.
+	 */
+	private processArrayLiteral(tokenStream: TokenStream): TokenGroup | null {
+		// Expect the opening bracket
+		const openBracketToken = tokenStream.next();
+		if (!openBracketToken || openBracketToken.name !== '[') {
+			if (DEBUG) {
+				console.log(`TokenGrouper.processArrayLiteral: not an array literal, missing opening bracket`);
+			}
+			return null; // Not an array literal
+		}
+
+		const startPos = openBracketToken.start;
+		let allTokens = [openBracketToken];
+
+		if (DEBUG) {
+			console.log(`TokenGrouper.processArrayLiteral: starting to process array literal at position ${startPos}`);
+		}
+
+		// Create the array literal group
+		const arrayGroup: TokenGroup = {
+			type: 'ArrayLiteral',
+			start: startPos,
+			end: -1, // Will be filled in later
+			tokens: allTokens,
+			children: [],
+			metadata: {}
+		};
+
+		// Process the array body until we find the closing bracket
+		let bracketDepth = 1; // Start at 1 for the opening bracket
+		let braceDepth = 0;
+		let parenthesesDepth = 0;
+
+		while (!tokenStream.isEOF() && bracketDepth > 0) {
+			const token = tokenStream.next();
+			if (!token) break;
+
+			allTokens.push(token);
+
+			if (DEBUG) {
+				console.log(`TokenGrouper.processArrayLiteral: processing token ${JSON.stringify(token)}`);
+			}
+
+			// Track nesting depth
+			if (token.name === '[') {
+				bracketDepth++;
+				if (DEBUG) {
+					console.log(`TokenGrouper.processArrayLiteral: found opening bracket, depth now ${bracketDepth}`);
+				}
+			} else if (token.name === ']') {
+				bracketDepth--;
+				if (DEBUG) {
+					console.log(`TokenGrouper.processArrayLiteral: found closing bracket, depth now ${bracketDepth}`);
+				}
+				if (bracketDepth === 0) {
+					// We've found the closing bracket
+					arrayGroup.end = token.end;
+					if (DEBUG) {
+						console.log(`TokenGrouper.processArrayLiteral: array literal ends at position ${token.end}`);
+					}
+				}
+			} else if (token.name === '{') {
+				braceDepth++;
+
+				// If we're starting a new object at the top level (not inside another structure),
+				// we could recursively process it as a child node
+				if (braceDepth === 1 && bracketDepth === 1 && parenthesesDepth === 0) {
+					// Save current position
+					const objectStart = token.start;
+
+					// Process object literal recursively (reusing the current implementation)
+					tokenStream.consumeWhitespace();
+					const objGroup = this.processObjectLiteral(tokenStream);
+					if (objGroup) {
+						// Add as a child node
+						arrayGroup.children.push(objGroup);
+					}
+
+					// Skip the already processed tokens
+					continue;
+				}
+			} else if (token.name === '}') {
+				braceDepth--;
+			} else if (token.name === '(') {
+				parenthesesDepth++;
+			} else if (token.name === ')') {
+				parenthesesDepth--;
+			}
+		}
+
+		// If we didn't find a proper closing bracket, use the last token position
+		if (arrayGroup.end === -1) {
+			const lastToken = allTokens[allTokens.length - 1];
+			arrayGroup.end = lastToken ? lastToken.end : startPos;
+			if (DEBUG) {
+				console.log(`TokenGrouper.processArrayLiteral: no closing bracket found, using end position ${arrayGroup.end}`);
+			}
+		}
+
+		// Update tokens
+		arrayGroup.tokens = allTokens;
+
+		if (DEBUG) {
+			console.log(`TokenGrouper.processArrayLiteral: completed processing array literal, token count: ${allTokens.length}`);
+		}
+
+		return arrayGroup;
+	}
+
+	/**
+	 * Helper method to find a matching closing delimiter.
+	 */
+	private findMatchingClosingDelimiter(
+		stream: TokenStream,
+		openDelim: string,
+		closeDelim: string
+	): number {
+		let depth = 1;
+		let position = -1;
+
+		while (!stream.isEOF() && depth > 0) {
+			const token = stream.next();
+			if (!token) break;
+
+			if (token.name === openDelim) {
+				depth++;
+			} else if (token.name === closeDelim) {
+				depth--;
+				if (depth === 0) {
+					position = token.end;
+				}
+			}
+		}
+
+		return position;
+	}
+
+	/**
+	 * Helper method to extract template parameters from a token stream.
+	 */
+	private extractTemplateParams(tokenStream: TokenStream): string | undefined {
 		// Check if next token is '<'
-		const ltToken = this.stream.peek();
+		const ltToken = tokenStream.peek();
 		if (!ltToken || ltToken.name !== '<') {
 			return undefined;
 		}
 
 		// Consume '<'
-		this.stream.next();
+		tokenStream.next();
 		const templateStart = ltToken.start;
 
 		// Collect everything until matching '>'.
 		let depth = 1;
 		let lastPos = ltToken.end;
 
-		while (!this.stream.isEOF() && depth > 0) {
-			const token = this.stream.next();
+		while (!tokenStream.isEOF() && depth > 0) {
+			const token = tokenStream.next();
 			if (!token) break;
 			if (token.name === '<') {
 				depth++;
@@ -391,985 +1827,12 @@ export class TypeScriptBodyParser {
 		}
 
 		// Return the substring from `<` up through `>`
-		const templateParams = this.source.substring(templateStart, lastPos);
-		return templateParams;
-	}
-
-	public parseBody(): ParsedItemToken[] {
-		const items: ParsedItemToken[] = [];
-		if (DEBUG) console.log("TypeScriptBodyParser.parseBody: starting to parse body");
-
-		// Consume any leading whitespace.
-		this.stream.consumeWhitespace();
-
-		// Peek at the first token.
-		const token = this.stream.peek();
-
-		// If the first non-whitespace token is '[' then the input is a top-level array literal.
-		if (token && token.name === '[') {
-			if (DEBUG) console.log("TypeScriptBodyParser.parseBody: detected top-level array literal");
-			// Delegate parsing of the array literal to TypeScriptObjectParser.
-			const objectParser = new TypeScriptObjectParser(this.stream, this.source);
-			const arrayTokens = objectParser.parseArray();
-			// The first token in the returned list is the outer array token.
-			if (arrayTokens.length > 0) {
-				items.push(arrayTokens[0]);
-			}
-		} else {
-			// Otherwise, process recognized TS constructs (classes, interfaces, functions, variables, etc.).
-			while (!this.stream.isEOF()) {
-				this.stream.consumeWhitespace();
-				const token = this.stream.peek();
-				if (!token) break;
-
-				switch (token.type) {
-					case 'class':
-					case 'interface':
-					case 'type':
-					case 'enum':
-					case 'function':
-					case 'variable': {
-						// Note: parseItem now returns an array of tokens.
-						const itemTokens = this.parseItem();
-						items.push(...itemTokens);
-						if (DEBUG)
-							console.log(
-								`TypeScriptBodyParser.parseBody: parsed items of type '${itemTokens[0].type}'`
-							);
-						break;
-					}
-					default:
-						if (DEBUG)
-							console.log(`TypeScriptBodyParser.parseBody: skipping token of type '${token.type}'`);
-						this.stream.next(); // skip unhandled tokens
-						break;
-				}
-			}
-		}
-
-		if (DEBUG)
-			console.log(`TypeScriptBodyParser.parseBody: finished parsing body with ${items.length} items`);
-		return items;
-	}
-
-	/**
-	 * Parses an item (for example, a variable declaration) and returns one or more tokens.
-	 * For a variable declaration with an initializer (like an array literal),
-	 * it returns both the variable token and the initializer token.
-	 */
-	private parseItem(): ParsedItemToken[] {
-		const tokens: ParsedItemToken[] = [];
-		const startToken = this.stream.next();
-		if (!startToken) {
-			if (DEBUG)
-				console.log("TypeScriptBodyParser.parseItem: no start token, returning unknown token");
-			return [{ type: 'unknown', start: 0, end: 0 }];
-		}
-
-		const itemType = startToken.type; // e.g. 'variable'
-		let itemName: string | undefined;
-		let itemStart = startToken.start;
-		let itemEnd = startToken.end;
-		let templateParams: string | undefined;
-
-		// For variable declarations, the next token should be the variable name.
-		this.stream.consumeWhitespace();
-		const nameToken = this.stream.peek();
-		if (nameToken && nameToken.type === 'unknown') {
-			itemName = nameToken.name;
-			itemEnd = nameToken.end;
-			this.stream.next(); // consume the name token
-		}
-
-		// After reading the name, check for generic type parameters.
-		this.stream.consumeWhitespace();
-		const maybeTemplateParams = this.parseGenericTypeParams();
-		if (maybeTemplateParams) {
-			templateParams = maybeTemplateParams;
-			// Update the item end position accordingly.
-			const templateEnd = itemStart + maybeTemplateParams.length;
-			itemEnd = Math.max(itemEnd, templateEnd);
-		}
-
-		// Create the main token (e.g. the variable token).
-		const mainToken: ParsedItemToken = {
-			type: itemType,
-			name: itemName,
-			start: itemStart,
-			end: itemEnd,
-			templateParams
-		};
-		tokens.push(mainToken);
-
-		// If this is a variable declaration, check for an initializer.
-		if (itemType === 'variable') {
-			this.stream.consumeWhitespace();
-			const nextToken = this.stream.peek();
-			if (nextToken && nextToken.name === '=') {
-				// Consume the '=' token.
-				this.stream.next();
-				this.stream.consumeWhitespace();
-				// Check if the initializer is an array literal or an object literal.
-				const initializerToken = this.stream.peek();
-				if (initializerToken && initializerToken.name === '[') {
-					if (DEBUG)
-						console.log("TypeScriptBodyParser.parseItem: detected array literal initializer");
-					// Delegate to the array parser.
-					const objectParser = new TypeScriptObjectParser(this.stream, this.source);
-					const arrayTokens = objectParser.parseArray();
-					if (arrayTokens.length > 0) {
-						// Append the outer array token from the initializer.
-						tokens.push(arrayTokens[0]);
-					}
-				} else if (initializerToken && initializerToken.name === '{') {
-					if (DEBUG)
-						console.log("TypeScriptBodyParser.parseItem: detected object literal initializer");
-					// Delegate to the object parser.
-					const objectParser = new TypeScriptObjectParser(this.stream, this.source);
-					const objectTokens = objectParser.parseObject();
-					if (objectTokens.length > 0) {
-						// Append the object literal token from the initializer.
-						tokens.push(objectTokens[0]);
-					}
-				}
-			}
-		}
-
-
-		return tokens;
-	}
-}
-
-/******************************************************
- * A naive parser for object, array, etc.
- ******************************************************/
-export class TypeScriptObjectParser {
-	constructor(private stream: TokenStream, private source: string) { }
-
-	public parseObject(): ParsedItemToken[] {
-		if (DEBUG) console.log("TypeScriptObjectParser.parseObject: starting to parse object");
-		const tokens: ParsedItemToken[] = [];
-		const openBrace = this.stream.peek();
-		if (!openBrace || openBrace.name !== '{') {
-			if (DEBUG)
-				console.log(
-					"TypeScriptObjectParser.parseObject: no opening '{' found, returning empty tokens"
-				);
-			return tokens;
-		}
-		// Create one top-level 'object' token
-		const objectToken: ParsedItemToken = {
-			type: 'object',
-			start: openBrace.start,
-			end: openBrace.end
-		};
-		tokens.push(objectToken);
-		if (DEBUG)
-			console.log(
-				`TypeScriptObjectParser.parseObject: created object token starting at ${openBrace.start}`
-			);
-		this.stream.next(); // consume '{'
-		let braceCount = 1;
-
-		while (!this.stream.isEOF() && braceCount > 0) {
-			this.stream.consumeWhitespace();
-			const current = this.stream.peek();
-			if (!current) break;
-
-			if (current.name === '}') {
-				objectToken.end = current.end; // close the object
-				if (DEBUG)
-					console.log(
-						`TypeScriptObjectParser.parseObject: found closing '}', object ends at ${current.end}, substring: '${this.source.substring(
-							current.start,
-							current.end
-						)}'`
-					);
-				braceCount--;
-				this.stream.next(); // consume '}'
-				break;
-			}
-			if (current.name === ',') {
-				this.stream.next(); // skip comma
-				if (DEBUG)
-					console.log("TypeScriptObjectParser.parseObject: skipping comma");
-				continue;
-			}
-			// parse a property
-			const propertyTokens = this.parseProperty();
-			tokens.push(...propertyTokens);
-			if (DEBUG)
-				console.log(
-					`TypeScriptObjectParser.parseObject: parsed property with tokens ${JSON.stringify(
-						propertyTokens
-					)}`
-				);
-		}
-		if (DEBUG)
-			console.log("TypeScriptObjectParser.parseObject: finished parsing object");
-		return tokens;
-	}
-
-	public parseProperty(): ParsedItemToken[] {
-		if (DEBUG) console.log("TypeScriptObjectParser.parseProperty: starting to parse property");
-		const tokens: ParsedItemToken[] = [];
-		this.stream.consumeWhitespace();
-		const keyToken = this.stream.peek();
-		if (!keyToken || keyToken.name === '}' || keyToken.name === ',') {
-			if (DEBUG)
-				console.log("TypeScriptObjectParser.parseProperty: no valid property key found");
-			return tokens; // no property here
-		}
-		// treat first token as property key
-		const propStart = keyToken.start;
-		const propKeyName = this.source.substring(keyToken.start, keyToken.end);
-		const propToken: ParsedItemToken = {
-			type: 'property',
-			start: propStart,
-			end: keyToken.end,
-			name: propKeyName
-		};
-		tokens.push(propToken);
-		if (DEBUG)
-			console.log(
-				`TypeScriptObjectParser.parseProperty: parsed property key '${propKeyName}'`
-			);
-		this.stream.next(); // consume key
-
-		// consume optional colon + value
-		this.stream.consumeWhitespace();
-		const maybeColon = this.stream.peek();
-		if (maybeColon && maybeColon.name === ':') {
-			this.stream.next(); // consume ':'
-			if (DEBUG)
-				console.log("TypeScriptObjectParser.parseProperty: found colon ':' after property key");
-			this.stream.consumeWhitespace();
-			const valueTokens = this.parseValue(propToken);
-			tokens.push(...valueTokens);
-			if (DEBUG)
-				console.log(
-					`TypeScriptObjectParser.parseProperty: parsed value tokens ${JSON.stringify(
-						valueTokens
-					)}`
-				);
-		}
-		return tokens;
-	}
-
-	/**
-	 * Parse a function expression starting at the 'function' keyword.
-	 * Returns a single token of type 'function'.
-	 * If the function has no name, use 'anonymous' as the token name.
-	 */
-	private parseFunctionExpression(): ParsedItemToken {
-		// first token is guaranteed to be type === 'function'
-		const functionKeywordToken = this.stream.next()!; // consume 'function'
-		const startIndex = functionKeywordToken.start;
-
-		// optional function name token
-		let functionName = 'anonymous';
-		this.stream.consumeWhitespace();
-		const maybeNameToken = this.stream.peek();
-		if (
-			maybeNameToken &&
-			maybeNameToken.type === 'unknown' && // possible function name
-			maybeNameToken.name !== '(' // extra safety check
-		) {
-			functionName = maybeNameToken.name ?? 'anonymous';
-			this.stream.next(); // consume the function name
-		}
-
-		// consume the parameter list: '(' ... ')'
-		this.stream.consumeWhitespace();
-		let endPos = functionKeywordToken.end;
-		const maybeOpenParen = this.stream.peek();
-		if (maybeOpenParen && maybeOpenParen.name === '(') {
-			endPos = this.parseParenBlock('(', ')');
-		}
-
-		// consume the function body: '{' ... '}'
-		this.stream.consumeWhitespace();
-		const maybeOpenBrace = this.stream.peek();
-		if (maybeOpenBrace && maybeOpenBrace.name === '{') {
-			endPos = this.parseParenBlock('{', '}');
-		}
-
-		// produce a 'function' token from startIndex to endPos
-		const funcToken: ParsedItemToken = {
-			type: 'function',
-			name: functionName,
-			start: startIndex,
-			end: endPos
-		};
-		return funcToken;
-	}
-
-	/**
-	 * Helper: consumes everything from openSymbol to closeSymbol,
-	 * including nested pairs, returning the end index.
-	 */
-	private parseParenBlock(openSymbol: string, closeSymbol: string): number {
-		let openToken = this.stream.next()!; // e.g. '(' or '{'
-		let depth = 1;
-		let endPos = openToken.end;
-
-		while (!this.stream.isEOF() && depth > 0) {
-			const t = this.stream.next();
-			if (!t) break;
-			endPos = t.end;
-			if (t.name === openSymbol) {
-				depth++;
-			} else if (t.name === closeSymbol) {
-				depth--;
-			}
-		}
-		return endPos;
-	}
-
-	private parseValue(_parentProp: ParsedItemToken): ParsedItemToken[] {
-		if (DEBUG) console.log("TypeScriptObjectParser.parseValue: starting to parse value");
-		const tokens: ParsedItemToken[] = [];
-		this.stream.consumeWhitespace();
-		const t = this.stream.peek();
-		if (!t) {
-			if (DEBUG)
-				console.log("TypeScriptObjectParser.parseValue: no token found for value");
-			return tokens;
-		}
-
-		// check for object
-		if (t.name === '{') {
-			if (DEBUG)
-				console.log("TypeScriptObjectParser.parseValue: detected object literal");
-			tokens.push(...this.parseObject());
-			return tokens;
-		}
-
-		// check for array
-		if (t.name === '[') {
-			if (DEBUG)
-				console.log("TypeScriptObjectParser.parseValue: detected array literal");
-			tokens.push(...this.parseArray());
-			return tokens;
-		}
-
-		// check for function expression
-		if (t.type === 'function') {
-			if (DEBUG)
-				console.log("TypeScriptObjectParser.parseValue: detected function expression");
-			const funcToken = this.parseFunctionExpression();
-			tokens.push(funcToken);
-			return tokens;
-		}
-
-		// otherwise treat as literal
-		const lit = this.stream.next(); // consume
-		if (lit) {
-			const literalToken: ParsedItemToken = {
-				type: 'literal',
-				start: lit.start,
-				end: lit.end,
-				name: this.source.substring(lit.start, lit.end)
-			};
-			tokens.push(literalToken);
-			if (DEBUG)
-				console.log(
-					`TypeScriptObjectParser.parseValue: parsed literal value '${literalToken.name}'`
-				);
-		}
-		return tokens;
-	}
-
-	public parseArray(): ParsedItemToken[] {
-		if (DEBUG) console.log("TypeScriptObjectParser.parseArray: starting to parse array");
-		const tokens: ParsedItemToken[] = [];
-		const openBracket = this.stream.peek();
-		if (!openBracket || openBracket.name !== '[') {
-			if (DEBUG)
-				console.log("TypeScriptObjectParser.parseArray: no opening '[' found, returning empty tokens");
-			return tokens;
-		}
-		// Create a top-level array token for this array literal.
-		const arrToken: ParsedItemToken = {
-			type: 'array',
-			start: openBracket.start,
-			end: openBracket.end
-		};
-		tokens.push(arrToken);
-		if (DEBUG)
-			console.log(`TypeScriptObjectParser.parseArray: created array token starting at ${openBracket.start}`);
-		this.stream.next(); // consume '['
-		let bracketCount = 1;
-		// Flag to ensure that only the first nested array token is added.
-		let nestedArrayTokenAdded = false;
-
-		while (!this.stream.isEOF() && bracketCount > 0) {
-			this.stream.consumeWhitespace();
-			const current = this.stream.peek();
-			if (!current) break;
-
-			if (current.name === ']') {
-				bracketCount--;
-				arrToken.end = current.end;
-				if (DEBUG)
-					console.log(
-						`TypeScriptObjectParser.parseArray: found closing ']', array ends at ${current.end}, substring: '${this.source.substring(current.start, current.end)}'`
-					);
-				this.stream.next(); // consume ']'
-				break;
-			}
-			if (current.name === ',') {
-				this.stream.next(); // skip comma
-				if (DEBUG)
-					console.log("TypeScriptObjectParser.parseArray: skipping comma");
-				continue;
-			}
-			if (current.name === '{') {
-				if (DEBUG)
-					console.log("TypeScriptObjectParser.parseArray: detected nested object in array");
-				const innerObjectTokens = this.parseObject();
-				if (innerObjectTokens.length > 0) {
-					tokens.push(innerObjectTokens[0]);
-				}
-				continue;
-			}
-			if (current.name === '[') {
-				if (DEBUG)
-					console.log("TypeScriptObjectParser.parseArray: detected nested array in array");
-				const nestedArrTokens = this.parseArray();
-				// Only add the first nested array token encountered.
-				if (!nestedArrayTokenAdded && nestedArrTokens.length > 0) {
-					tokens.push(nestedArrTokens[0]);
-					nestedArrayTokenAdded = true;
-				}
-				// Continue without adding further nested array tokens.
-				continue;
-			}
-			// Treat the token as a literal.
-			const lit = this.stream.next();
-			if (lit) {
-				const literalToken: ParsedItemToken = {
-					type: 'literal',
-					start: lit.start,
-					end: lit.end,
-					name: this.source.substring(lit.start, lit.end)
-				};
-				tokens.push(literalToken);
-				if (DEBUG)
-					console.log(`TypeScriptObjectParser.parseArray: parsed literal array item '${literalToken.name}'`);
-			}
-		}
-		if (DEBUG)
-			console.log("TypeScriptObjectParser.parseArray: finished parsing array");
-		return tokens;
-	}
-
-}
-
-/******************************************************
- * A specialized parser for variable declarations
- ******************************************************/
-export interface VariableAssignmentResult {
-	variableKeyword: 'const' | 'let' | 'var' | 'unknown';
-	variableName: string | undefined;
-	initializer?: ParsedItemToken;
-}
-
-export class TypeScriptVariableParser {
-	private stream: TokenStream;
-	constructor(private source: string, tokensForVariable: ParsedItemToken[]) {
-		this.stream = new TokenStream(tokensForVariable);
-	}
-
-	public parseVariable(): VariableAssignmentResult {
-		if (DEBUG)
-			console.log("TypeScriptVariableParser.parseVariable: starting variable parsing");
-		this.stream.consumeWhitespace();
-		let keyword = 'unknown' as VariableAssignmentResult['variableKeyword'];
-		let variableName: string | undefined;
-		let initializer: ParsedItemToken | undefined;
-
-		// read 'const'/'let'/'var'
-		const firstTok = this.stream.peek();
-		if (firstTok && firstTok.type === 'variable') {
-			const tokText = this.getTokenText(firstTok).trim();
-			keyword = tokText as 'const' | 'let' | 'var';
-			this.stream.next();
-			if (DEBUG)
-				console.log(
-					`TypeScriptVariableParser.parseVariable: found variable keyword '${keyword}'`
-				);
-		}
-
-		// read the variable name
-		this.stream.consumeWhitespace();
-		const nameTok = this.stream.peek();
-		if (nameTok && nameTok.type === 'unknown') {
-			variableName = this.getTokenText(nameTok);
-			this.stream.next();
-			if (DEBUG)
-				console.log(
-					`TypeScriptVariableParser.parseVariable: found variable name '${variableName}'`
-				);
-		}
-
-		// check for '='
-		this.stream.consumeWhitespace();
-		const maybeEq = this.stream.peek();
-		if (maybeEq && maybeEq.name === '=') {
-			this.stream.next(); // consume '='
-			if (DEBUG)
-				console.log("TypeScriptVariableParser.parseVariable: found '=' for initializer");
-			initializer = this.parseInitializer();
-			if (DEBUG)
-				console.log("TypeScriptVariableParser.parseVariable: parsed initializer");
-		}
-
-		return { variableKeyword: keyword, variableName, initializer };
-	}
-
-	private parseInitializer(): ParsedItemToken | undefined {
-		if (DEBUG)
-			console.log("TypeScriptVariableParser.parseInitializer: starting to parse initializer");
-		this.stream.consumeWhitespace();
-		const t = this.stream.peek();
-		if (!t) return undefined;
-
-		// object or array
-		if (t.name === '{') {
-			if (DEBUG)
-				console.log("TypeScriptVariableParser.parseInitializer: detected object initializer");
-			const parser = new TypeScriptObjectParser(this.stream, this.source);
-			const tokens = parser.parseObject();
-			return tokens.length > 0 ? tokens[0] : undefined;
-		}
-		if (t.name === '[') {
-			if (DEBUG)
-				console.log("TypeScriptVariableParser.parseInitializer: detected array initializer");
-			const parser = new TypeScriptObjectParser(this.stream, this.source);
-			const tokens = parser.parseArray();
-			return tokens.length > 0 ? tokens[0] : undefined;
-		}
-
-		// otherwise literal
-		const literalToken = this.stream.next();
-		if (literalToken) {
-			const token: ParsedItemToken = {
-				type: 'literal',
-				start: t.start,
-				end: t.end,
-				name: this.getTokenText(t)
-			};
-			if (DEBUG)
-				console.log(
-					`TypeScriptVariableParser.parseInitializer: parsed literal initializer '${token.name}'`
-				);
-			return token;
-		}
-		return undefined;
-	}
-
-	private getTokenText(tok: ParsedItemToken): string {
-		return this.source.substring(tok.start, tok.end);
+		return this.source.substring(templateStart, lastPos);
 	}
 }
 
 
-/**
- * A dedicated parser for array literals.
- * It assumes the first token in the stream is '['
- * and will parse everything up to the matching ']'.
- */
-export class TypeScriptArrayParser {
-	constructor(private stream: TokenStream, private source: string) { }
 
-	/**
-	 * Parses an array literal, returning a list of tokens
-	 * that includes the top-level 'array' token and all
-	 * tokens for the array elements (literals, nested objects, etc.).
-	 */
-	public parseArray(): ParsedItemToken[] {
-		if (DEBUG) console.log("TypeScriptArrayParser.parseArray: starting parse");
-		const tokens: ParsedItemToken[] = [];
-
-		// 1) Check if next token is '['
-		const openBracket = this.stream.peek();
-		if (!openBracket || openBracket.name !== '[') {
-			// Not an array literal
-			if (DEBUG) {
-				console.log("TypeScriptArrayParser.parseArray: no '[' found, returning empty");
-			}
-			return tokens;
-		}
-
-		// 2) Create the top-level 'array' token
-		const arrToken: ParsedItemToken = {
-			type: 'array',
-			start: openBracket.start,
-			end: openBracket.end, // will update when we find the closing ']'
-		};
-		tokens.push(arrToken);
-
-		// Consume '['
-		this.stream.next();
-		let bracketCount = 1;
-
-		// 3) Parse until matching ']'
-		while (!this.stream.isEOF() && bracketCount > 0) {
-			// Skip any whitespace
-			this.stream.consumeWhitespace();
-			const current = this.stream.peek();
-			if (!current) break;
-
-			// If we find a closing bracket, decrement count and exit
-			if (current.name === ']') {
-				bracketCount--;
-				arrToken.end = current.end; // the array ends here
-				if (DEBUG) {
-					console.log(
-						`TypeScriptArrayParser.parseArray: found closing ']', array ends at ${current.end}, ` +
-						`substring: '${this.source.substring(current.start, current.end)}'`
-					);
-				}
-				this.stream.next(); // consume ']'
-				break;
-			}
-
-			// If we see a comma, just skip it
-			if (current.name === ',') {
-				if (DEBUG) {
-					console.log("TypeScriptArrayParser.parseArray: skipping comma");
-				}
-				this.stream.next();
-				continue;
-			}
-
-			// If it's an object literal
-			if (current.name === '{') {
-				if (DEBUG) {
-					console.log("TypeScriptArrayParser.parseArray: detected nested object in array");
-				}
-				const objParser = new TypeScriptObjectParser(this.stream, this.source);
-				const objTokens = objParser.parseObject();
-				// We push only the top-level object token from objTokens
-				// or all of them, depending on your data structure needs
-				tokens.push(...objTokens);
-				continue;
-			}
-
-			// If it's another array literal
-			if (current.name === '[') {
-				if (DEBUG) {
-					console.log("TypeScriptArrayParser.parseArray: detected nested array in array");
-				}
-				// Recursively parse a nested array
-				const nestedArrayParser = new TypeScriptArrayParser(this.stream, this.source);
-				const nestedArrTokens = nestedArrayParser.parseArray();
-				tokens.push(...nestedArrTokens);
-				continue;
-			}
-
-			// If it's a function expression (e.g. `function() {}`)
-			// Reuse your existing function-expression parsing logic if desired:
-			if (current.type === 'function') {
-				if (DEBUG) {
-					console.log("TypeScriptArrayParser.parseArray: detected function expression in array");
-				}
-				// For a simpler approach, we can parse it as a literal,
-				// or copy the parseFunctionExpression from TypeScriptObjectParser.
-				// Shown here if you want to replicate it:
-				const funcToken = this.parseFunctionExpression();
-				tokens.push(funcToken);
-				continue;
-			}
-
-			// Otherwise, treat it as a literal (numbers, identifiers, strings, booleans, etc.)
-			const lit = this.stream.next();
-			if (lit) {
-				const literalToken: ParsedItemToken = {
-					type: 'literal',
-					start: lit.start,
-					end: lit.end,
-					name: this.source.substring(lit.start, lit.end),
-				};
-				tokens.push(literalToken);
-				if (DEBUG) {
-					console.log(
-						`TypeScriptArrayParser.parseArray: parsed literal array item '${literalToken.name}'`
-					);
-				}
-			}
-		}
-
-		if (DEBUG) {
-			console.log("TypeScriptArrayParser.parseArray: finished parsing array");
-		}
-		return tokens;
-	}
-
-	/**
-	 * Example function-expression parser. If you already have this logic
-	 * in `TypeScriptObjectParser`, you can reuse that instead.
-	 */
-	private parseFunctionExpression(): ParsedItemToken {
-		const functionKeywordToken = this.stream.next()!;
-		const startIndex = functionKeywordToken.start;
-
-		// optional function name
-		let functionName = 'anonymous';
-		this.stream.consumeWhitespace();
-		const maybeNameToken = this.stream.peek();
-		if (maybeNameToken && maybeNameToken.type === 'unknown' && maybeNameToken.name !== '(') {
-			functionName = maybeNameToken.name ?? 'anonymous';
-			this.stream.next(); // consume the name token
-		}
-
-		// consume the parameter list: '(' ... ')'
-		this.stream.consumeWhitespace();
-		let endPos = functionKeywordToken.end;
-		const maybeOpenParen = this.stream.peek();
-		if (maybeOpenParen && maybeOpenParen.name === '(') {
-			endPos = this.parseParenBlock('(', ')');
-		}
-
-		// consume the function body: '{' ... '}'
-		this.stream.consumeWhitespace();
-		const maybeOpenBrace = this.stream.peek();
-		if (maybeOpenBrace && maybeOpenBrace.name === '{') {
-			endPos = this.parseParenBlock('{', '}');
-		}
-
-		return {
-			type: 'function',
-			name: functionName,
-			start: startIndex,
-			end: endPos,
-		};
-	}
-
-	/**
-	 * Consumes everything from openSymbol to closeSymbol (including nesting),
-	 * returning the end index of the last token consumed.
-	 */
-	private parseParenBlock(openSymbol: string, closeSymbol: string): number {
-		const openToken = this.stream.next()!;
-		let depth = 1;
-		let endPos = openToken.end;
-
-		while (!this.stream.isEOF() && depth > 0) {
-			const t = this.stream.next();
-			if (!t) break;
-			endPos = t.end;
-			if (t.name === openSymbol) {
-				depth++;
-			} else if (t.name === closeSymbol) {
-				depth--;
-			}
-		}
-		return endPos;
-	}
-}
-
-
-/******************************************************
- * Interface to represent a parsed type token.
- * The token may be one of:
- *   - a primary type (identifier with optional generics),
- *   - a union type (pipelined using the '|' operator),
- *   - or a parenthesized type.
- ******************************************************/
-export interface ParsedTypeToken {
-	kind: 'primary' | 'union' | 'parenthesized';
-	// For a primary type, name contains the type identifier text.
-	name?: string;
-	// Start and end positions in the source string.
-	start: number;
-	end: number;
-	// For a union type, subTypes holds all the primary types combined by '|'.
-	subTypes?: ParsedTypeToken[];
-	// For a primary type, genericArguments holds parsed generic type arguments if any.
-	genericArguments?: ParsedTypeToken[];
-}
-
-/******************************************************
- * A parser for TypeScript type expressions.
- * It supports union (pipelined) types such as:
- *
- *   A | B | C
- *
- * as well as primary types with optional generic arguments:
- *
- *   Array<string | number>
- *
- * and parenthesized types.
- *
- * This parser uses a SourcePointer, Tokenizer and TokenStream
- * (already defined in the code base) to avoid copying large substrings.
- ******************************************************/
-export class TypeScriptTypeParser {
-	private stream: TokenStream;
-
-	constructor(private source: string) {
-		// Create a source pointer for the input type string.
-		const pointer = new SourcePointer(source);
-		// Tokenize the input type string.
-		const tokenizer = new Tokenizer(pointer);
-		const tokens = tokenizer.tokenize();
-		// Create a token stream from the tokens.
-		this.stream = new TokenStream(tokens);
-	}
-
-	/**
-	 * Public method to parse the type expression.
-	 * Returns a ParsedTypeToken that represents the entire type.
-	 */
-	public parseType(): ParsedTypeToken {
-		// Start parsing the union type expression.
-		return this.parseUnionType();
-	}
-
-	/**
-	 * Parse a union type.
-	 * A union type consists of one or more primary types separated by '|'.
-	 * For example, given "A | B | C", this method creates a union token
-	 * whose subTypes are the tokens for A, B, and C.
-	 */
-	private parseUnionType(): ParsedTypeToken {
-		// Parse the first primary type.
-		let left = this.parsePrimaryType();
-		const unionTypes: ParsedTypeToken[] = [left];
-
-		// Loop while the next token is a pipe operator '|'.
-		while (!this.stream.isEOF() && this.peekPipe()) {
-			// Consume the '|' token.
-			const pipeToken = this.stream.next()!;
-			// (Optionally, you could record the pipe token here.)
-			// Consume any whitespace after the pipe.
-			this.stream.consumeWhitespace();
-			// Parse the next primary type.
-			const right = this.parsePrimaryType();
-			unionTypes.push(right);
-		}
-
-		// If only one type was parsed, return it directly.
-		if (unionTypes.length === 1) {
-			return left;
-		}
-
-		// Return a union type token with the parsed primary types as subTypes.
-		return {
-			kind: 'union',
-			subTypes: unionTypes,
-			start: unionTypes[0].start,
-			end: unionTypes[unionTypes.length - 1].end
-		};
-	}
-
-	/**
-	 * Parse a primary type.
-	 * A primary type may be:
-	 *   - an identifier (possibly with generic arguments),
-	 *   - or a parenthesized type.
-	 */
-	private parsePrimaryType(): ParsedTypeToken {
-		// Consume any leading whitespace.
-		this.stream.consumeWhitespace();
-		const token = this.stream.peek();
-		if (!token) {
-			throw new Error("Unexpected end of input while parsing type expression");
-		}
-
-		// If the token is an opening parenthesis, parse a parenthesized type.
-		if (token.name === '(') {
-			const openParen = this.stream.next()!; // consume '('
-			// Parse the inner type expression.
-			const innerType = this.parseUnionType();
-			this.stream.consumeWhitespace();
-			const closeParen = this.stream.peek();
-			if (!closeParen || closeParen.name !== ')') {
-				throw new Error("Expected ')' in parenthesized type expression");
-			}
-			this.stream.next(); // consume ')'
-			return {
-				kind: 'parenthesized',
-				subTypes: [innerType],
-				start: openParen.start,
-				end: closeParen.end
-			};
-		}
-
-		// For a primary type, consume the token and treat it as an identifier.
-		const primaryToken = this.stream.next()!;
-		let typeName = this.source.substring(primaryToken.start, primaryToken.end);
-
-		// Create a primary type token.
-		const primaryType: ParsedTypeToken = {
-			kind: 'primary',
-			name: typeName,
-			start: primaryToken.start,
-			end: primaryToken.end
-		};
-
-		// Check if the primary type has generic type arguments (e.g., Array<string>).
-		this.stream.consumeWhitespace();
-		if (this.stream.peek() && this.stream.peek()!.name === '<') {
-			const genericArgs = this.parseGenericArguments();
-			primaryType.genericArguments = genericArgs;
-			// Update the end position of the primary type to the end of the generic arguments.
-			if (genericArgs.length > 0) {
-				primaryType.end = genericArgs[genericArgs.length - 1].end;
-			}
-		}
-		return primaryType;
-	}
-
-	/**
-	 * Parse generic type arguments enclosed in '<' and '>'.
-	 * Generic arguments are parsed as a comma-separated list of type expressions.
-	 *
-	 * For example, given "<string | number, boolean>", this method returns
-	 * an array of ParsedTypeToken tokens for each generic argument.
-	 */
-	private parseGenericArguments(): ParsedTypeToken[] {
-		const args: ParsedTypeToken[] = [];
-		const ltToken = this.stream.peek();
-		if (!ltToken || ltToken.name !== '<') {
-			return args;
-		}
-		// Consume the '<' token.
-		this.stream.next();
-		this.stream.consumeWhitespace();
-
-		// Parse generic arguments separated by commas.
-		while (!this.stream.isEOF()) {
-			this.stream.consumeWhitespace();
-			// If the next token is '>', then generic arguments are complete.
-			const token = this.stream.peek();
-			if (token && token.name === '>') {
-				this.stream.next(); // consume '>'
-				break;
-			}
-			// Parse a type expression for the generic argument.
-			const argType = this.parseUnionType();
-			args.push(argType);
-			this.stream.consumeWhitespace();
-			// If the next token is a comma, consume it and continue parsing.
-			const commaToken = this.stream.peek();
-			if (commaToken && commaToken.name === ',') {
-				this.stream.next(); // consume ','
-			}
-		}
-		return args;
-	}
-
-	/**
-	 * Helper method to check if the next token is a pipe ('|') operator.
-	 */	
-	private peekPipe(): boolean {
-		const token = this.stream.peek();
-		return token !== null && token.name === '|';
-	}
-}
 
 
 
@@ -1378,321 +1841,973 @@ export class TypeScriptTypeParser {
 
 
 /******************************************************
- * Builders
+ * Edit Representation
  ******************************************************/
 
 /**
- * Represents an edit to be applied to the source text.
+ * Represents a text modification to be applied to the original source code.
+ * Positions refer to the original, unmodified source string.
  */
-interface Edit {
+export interface Edit {
+	/** The starting index (inclusive) in the original source text. */
 	start: number;
+	/** The ending index (exclusive) in the original source text. */
 	end: number;
+	/** The text to replace the original range with. Use an empty string for deletion. */
 	replacement: string;
 }
 
+
 /**
- * The top-level builder for TypeScript code.
- * It uses the existing parsers (such as TypeScriptBodyParser)
- * to locate code fragments and schedule text edits.
+ * Main builder for navigating and modifying TypeScript source code.
+ * It uses TokenGrouper to understand the code structure and manages
+ * a list of edits to be applied.
  */
 export class TypeScriptCodeBuilder {
 	private originalText: string = '';
 	private edits: Edit[] = [];
-	private parsedTokens: ParsedItemToken[] = [];
+	private rootGroup: TokenGroup | null = null; // Result from TokenGrouper
 
 	/**
-	 * Parses the input TypeScript code.
-	 * @param input - The complete TypeScript code as a string.
+	 * Initializes the builder with the TypeScript source code.
+	 * Immediately parses the code to build the internal structure representation.
+	 * @param input The TypeScript code as a string.
+	 */
+	constructor(input: string) {
+		this.parseText(input);
+	}
+
+	/**
+	 * (Re)parses the input TypeScript code, discarding previous state and edits.
+	 * This is useful if you want to load new code into the same builder instance.
+	 * @param input The complete TypeScript code as a string.
 	 */
 	public parseText(input: string): void {
 		this.originalText = input;
 		this.edits = [];
-		const parser = new TypeScriptBodyParser(input);
-		this.parsedTokens = parser.parseBody();
+		this.rootGroup = null; // Clear previous structure
+
+		if (!input) {
+			if (DEBUG) console.log("TypeScriptCodeBuilder.parseText: Input is empty, skipping parsing.");
+			// Initialize with an empty CodeFile group if needed
+			this.rootGroup = {
+				type: 'CodeFile',
+				start: 0,
+				end: 0,
+				tokens: [],
+				children: []
+			};
+			return;
+		}
+
+		try {
+			const pointer = new SourcePointer(input);
+			const tokenizer = new Tokenizer(pointer);
+			const tokens = tokenizer.tokenize();
+			if (DEBUG) console.log(`TypeScriptCodeBuilder.parseText: Tokenized ${tokens.length} tokens.`);
+
+			const grouper = new TokenGrouper(tokens, input);
+			this.rootGroup = grouper.group();
+			if (DEBUG) console.log(`TypeScriptCodeBuilder.parseText: Grouping complete. Root type: ${this.rootGroup?.type}`);
+
+		} catch (error) {
+			console.error("TypeScriptCodeBuilder.parseText: Error during parsing:", error);
+			// Decide how to handle parsing errors, maybe set rootGroup to a specific error state or keep it null
+			this.rootGroup = null;
+		}
 	}
 
 	/**
-	 * Finds an object literal associated with a given variable name.
-	 * For example, if the code has a variable declaration like:
-	 *   const location = { ... };
-	 * then findObject('location', …) will locate the object literal initializer.
-	 * @param objectName - The variable name whose object literal to locate.
-	 * @param options - Callbacks executed when the object is found or not found.
+	 * Finds a specific TokenGroup node within the parsed hierarchy based on criteria using DFS.
+	 * @param predicate A function that returns true for the desired TokenGroup.
+	 * @param scope Optional. The TokenGroup node to search within (defaults to the root).
+	 * @returns The first TokenGroup matching the predicate, or null if not found.
+	 */
+	public findGroup(predicate: (group: TokenGroup) => boolean, scope?: TokenGroup): TokenGroup | null {
+		const startNode = scope ?? this.rootGroup;
+		if (!startNode) {
+			return null;
+		}
+
+		const stack: TokenGroup[] = [startNode];
+
+		while (stack.length > 0) {
+			const node = stack.pop()!; // Non-null assertion because we check stack.length
+
+			if (predicate(node)) {
+				return node;
+			}
+
+			// Add children to stack in reverse order for DFS (effectively processing first child first)
+			if (node.children && node.children.length > 0) {
+				for (let i = node.children.length - 1; i >= 0; i--) {
+					stack.push(node.children[i]);
+				}
+			}
+		}
+
+		return null; // Not found
+	}
+
+	/**
+	 * Finds a variable declaration by name and provides an ObjectBuilder
+	 * if its initializer is an object literal.
+	 * Uses the TokenGroup hierarchy to locate the variable and its potential object initializer.
+	 * @param variableName The name of the variable to find.
+	 * @param options Callbacks for handling success or failure.
 	 */
 	public findObject(
-		objectName: string,
-		options: { onFound: (objectBuilder: ObjectBuilder) => void; onNotFound?: () => void }
+		variableName: string,
+		options: {
+			onFound: (objectBuilder: TypeScriptObjectBuilder) => void;
+			onNotFound?: () => void;
+		}
 	): void {
-		let targetObjectToken: ParsedItemToken | undefined;
-		// Search for a variable token with the given name, then find its object initializer.
-		for (let i = 0; i < this.parsedTokens.length; i++) {
-			const token = this.parsedTokens[i];
-			if (token.type === 'variable' && token.name === objectName) {
-				// Look for the next object token (assumed to be the initializer) after the variable token.
-				for (let j = i + 1; j < this.parsedTokens.length; j++) {
-					const nextToken = this.parsedTokens[j];
-					if (nextToken.type === 'object' && nextToken.start >= token.end) {
-						targetObjectToken = nextToken;
+		if (!this.rootGroup) {
+			if (DEBUG) console.log(`TypeScriptCodeBuilder.findObject: No root group found.`);
+			options.onNotFound?.();
+			return;
+		}
+
+		const variableGroup = this.findGroup(
+			(group) => group.type === 'VariableDeclaration' && group.name === variableName
+		);
+
+		if (!variableGroup) {
+			if (DEBUG) console.log(`TypeScriptCodeBuilder.findObject: Variable declaration "${variableName}" not found.`);
+			options.onNotFound?.();
+			return;
+		}
+
+		// First, try to find the object literal as a direct child
+		let objectLiteralGroup = variableGroup.children?.find(child => child.type === 'ObjectLiteral');
+
+		if (!objectLiteralGroup) {
+			// If not found as a child, try to find it manually in the tokens
+			if (DEBUG) console.log(`TypeScriptCodeBuilder.findObject: No object literal child for "${variableName}", trying to find it in tokens.`);
+
+			// Find the assignment token (=)
+			let equalsTokenIndex = -1;
+			for (let i = 0; i < variableGroup.tokens.length; i++) {
+				if (variableGroup.tokens[i].name === '=') {
+					equalsTokenIndex = i;
+					break;
+				}
+			}
+
+			if (equalsTokenIndex === -1 || equalsTokenIndex >= variableGroup.tokens.length - 1) {
+				if (DEBUG) console.log(`TypeScriptCodeBuilder.findObject: No assignment token found for "${variableName}".`);
+				options.onNotFound?.();
+				return;
+			}
+
+			// Find the next non-whitespace token after '='
+			let openBraceIndex = -1;
+			for (let i = equalsTokenIndex + 1; i < variableGroup.tokens.length; i++) {
+				if (variableGroup.tokens[i].type !== 'whitespace') {
+					if (variableGroup.tokens[i].name === '{') {
+						openBraceIndex = i;
+					}
+					break;
+				}
+			}
+
+			if (openBraceIndex === -1) {
+				if (DEBUG) console.log(`TypeScriptCodeBuilder.findObject: No opening brace found after '=' for "${variableName}".`);
+				options.onNotFound?.();
+				return;
+			}
+
+			// Extract the object literal by finding matching braces
+			let braceDepth = 1;
+			let closeBraceIndex = -1;
+
+			for (let i = openBraceIndex + 1; i < variableGroup.tokens.length; i++) {
+				const token = variableGroup.tokens[i];
+				if (token.name === '{') {
+					braceDepth++;
+				} else if (token.name === '}') {
+					braceDepth--;
+					if (braceDepth === 0) {
+						closeBraceIndex = i;
 						break;
 					}
 				}
 			}
-			if (targetObjectToken) {
-				break;
+
+			if (closeBraceIndex === -1) {
+				if (DEBUG) console.log(`TypeScriptCodeBuilder.findObject: No closing brace found for object literal in "${variableName}".`);
+				options.onNotFound?.();
+				return;
 			}
+
+			// Create a synthetic object literal group
+			const openBraceToken = variableGroup.tokens[openBraceIndex];
+			const closeBraceToken = variableGroup.tokens[closeBraceIndex];
+
+			objectLiteralGroup = {
+				type: 'ObjectLiteral',
+				start: openBraceToken.start,
+				end: closeBraceToken.end,
+				tokens: variableGroup.tokens.slice(openBraceIndex, closeBraceIndex + 1),
+				children: [],
+				metadata: {}
+			};
 		}
-		if (targetObjectToken) {
-			const objectBuilder = new ObjectBuilder(
-				this,
-				targetObjectToken.start,
-				targetObjectToken.end,
-				this.originalText
-			);
+
+		if (objectLiteralGroup) {
+			if (DEBUG) console.log(`TypeScriptCodeBuilder.findObject: Found object literal for "${variableName}".`);
+			const objectBuilder = new TypeScriptObjectBuilder(this, objectLiteralGroup, this.originalText);
 			options.onFound(objectBuilder);
-		} else if (options.onNotFound) {
-			options.onNotFound();
+		} else {
+			if (DEBUG) console.log(`TypeScriptCodeBuilder.findObject: Variable "${variableName}" does not have an object literal initializer.`);
+			options.onNotFound?.();
 		}
 	}
 
 	/**
-	 * Schedules an edit (text replacement) in the source code.
-	 * @param start - The starting index of the text to replace.
-	 * @param end - The ending index of the text to replace.
-	 * @param replacement - The new text to insert.
-	 */
-	public addEdit(start: number, end: number, replacement: string): void {
-		this.edits.push({ start, end, replacement });
-	}
-
-	/**
-	 * Applies all scheduled edits to the original code and returns the modified code.
-	 * Edits are applied in descending order so that earlier edits do not shift later indices.
-	 * @returns A promise resolving to the modified source code.
-	 */
-	public async toString(): Promise<string> {
-		// Sort the edits by starting index in descending order.
-		const sortedEdits = this.edits.sort((a, b) => b.start - a.start);
-		let modified = this.originalText;
-		for (const edit of sortedEdits) {
-			modified = modified.slice(0, edit.start) + edit.replacement + modified.slice(edit.end);
-		}
-		return modified;
-	}
-
-	/**
-	 * Finds a type annotation for a given variable name.
-	 * For example, if the code has a variable declaration like:
-	 *   const x: number = 123;
-	 * then findType('x', …) will locate the type annotation "number".
-	 * @param variableName - The variable name whose type annotation to locate.
-	 * @param options - Callbacks executed when the type is found or not found.
-	 */
-	public findType(
-		variableName: string,
-		options: { onFound: (typeBuilder: TypeScriptTypeBuilder) => void; onNotFound?: () => void }
-	): void {
-		let targetVariableToken: ParsedItemToken | undefined;
-		// Search for a variable token with the given name.
-		for (let i = 0; i < this.parsedTokens.length; i++) {
-			const token = this.parsedTokens[i];
-			if (token.type === 'variable' && token.name === variableName) {
-				targetVariableToken = token;
-				break;
-			}
-		}
-		if (targetVariableToken) {
-			// Look for the colon ':' that indicates the start of the type annotation.
-			const colonIndex = this.originalText.indexOf(':', targetVariableToken.end);
-			if (colonIndex !== -1) {
-				// Set the start of the type region immediately after the colon.
-				let typeStart = colonIndex + 1;
-				// Determine the end of the type annotation.
-				// We assume the type ends at the first '=' or ';' after the type start.
-				let typeEndCandidates: number[] = [];
-				const eqIndex = this.originalText.indexOf('=', typeStart);
-				if (eqIndex !== -1) {
-					typeEndCandidates.push(eqIndex);
-				}
-				const semicolonIndex = this.originalText.indexOf(';', typeStart);
-				if (semicolonIndex !== -1) {
-					typeEndCandidates.push(semicolonIndex);
-				}
-				// If no delimiter is found, use the end of the source text.
-				if (typeEndCandidates.length === 0) {
-					typeEndCandidates.push(this.originalText.length);
-				}
-				const typeEnd = Math.min(...typeEndCandidates);
-				// Create a new TypeScriptTypeBuilder for the located type annotation.
-				const typeBuilder = new TypeScriptTypeBuilder(this, typeStart, typeEnd, this.originalText);
-				options.onFound(typeBuilder);
-			} else if (options.onNotFound) {
-				options.onNotFound();
-			}
-		} else if (options.onNotFound) {
-			options.onNotFound();
-		}
-	}
-}
-
-/**
- * Builder for object literals.
- * Provides methods to modify property values and to find nested array literals.
- */
-export class ObjectBuilder {
-	/**
-	 * @param parentBuilder - A reference to the top-level code builder.
-	 * @param objStart - The starting index (in the original text) of the object literal.
-	 * @param objEnd - The ending index (in the original text) of the object literal.
-	 * @param originalText - The complete original source code.
-	 */
-	constructor(
-		private parentBuilder: TypeScriptCodeBuilder,
-		private objStart: number,
-		private objEnd: number,
-		private originalText: string
-	) { }
-
-	/**
-	 * Replaces the value of a property in the object literal.
-	 * This method parses the object literal (using the TypeScriptObjectParser)
-	 * to locate the property token and its value. Then it schedules an edit
-	 * to replace the text of the property value.
-	 * @param propertyName - The name of the property to modify.
-	 * @param newValue - The new value as a string (for example, "'new-village'").
-	 */
-	public setPropertyValue(propertyName: string, newValue: string): void {
-		// Extract the object literal text from the full source.
-		const objectText = this.originalText.substring(this.objStart, this.objEnd);
-		// Create a new parser for the object literal.
-		const pointer = new SourcePointer(objectText);
-		const tokenizer = new Tokenizer(pointer);
-		const tokens = tokenizer.tokenize();
-		const stream = new TokenStream(tokens);
-		const objParser = new TypeScriptObjectParser(stream, objectText);
-		const parsedTokens = objParser.parseObject();
-
-		// Iterate through the tokens to find the property with the given name.
-		for (let i = 0; i < parsedTokens.length; i++) {
-			const token = parsedTokens[i];
-			if (token.type === 'property' && token.name === propertyName) {
-				// Assume the next token is the value token.
-				if (i + 1 < parsedTokens.length) {
-					const valueToken = parsedTokens[i + 1];
-					// Calculate absolute positions relative to the full source.
-					const absoluteStart = this.objStart + valueToken.start;
-					const absoluteEnd = this.objStart + valueToken.end;
-					// Schedule the replacement of the value.
-					this.parentBuilder.addEdit(absoluteStart, absoluteEnd, newValue);
-				}
-				break;
-			}
-		}
-	}
-
-	/**
-	 * Finds an array literal property within the object literal and calls the callback.
-	 * @param propertyName - The property name whose value is expected to be an array.
-	 * @param options - Callbacks executed when the array is found or not found.
+	 * Finds a variable declaration by name and provides an ArrayBuilder
+	 * if its initializer is an array literal.
+	 * Uses the TokenGroup hierarchy.
+	 * @param variableName The name of the variable to find.
+	 * @param options Callbacks for handling success or failure.
 	 */
 	public findArray(
-		propertyName: string,
-		options: { onFound: (arrayBuilder: ArrayBuilder) => void; onNotFound?: () => void }
+		variableName: string,
+		options: {
+			onFound: (arrayBuilder: TypeScriptArrayBuilder) => void;
+			onNotFound?: () => void;
+		}
 	): void {
-		const objectText = this.originalText.substring(this.objStart, this.objEnd);
-		const pointer = new SourcePointer(objectText);
-		const tokenizer = new Tokenizer(pointer);
-		const tokens = tokenizer.tokenize();
-		const stream = new TokenStream(tokens);
-		const objParser = new TypeScriptObjectParser(stream, objectText);
-		const parsedTokens = objParser.parseObject();
+		if (!this.rootGroup) {
+			if (DEBUG) console.log(`TypeScriptCodeBuilder.findArray: No root group found.`);
+			options.onNotFound?.();
+			return;
+		}
 
-		// Look for the property token and then for an array token among its following tokens.
-		for (let i = 0; i < parsedTokens.length; i++) {
-			const token = parsedTokens[i];
-			if (token.type === 'property' && token.name === propertyName) {
-				for (let j = i + 1; j < parsedTokens.length; j++) {
-					const nextToken = parsedTokens[j];
-					if (nextToken.type === 'array') {
-						const absoluteStart = this.objStart + nextToken.start;
-						const absoluteEnd = this.objStart + nextToken.end;
-						const arrayBuilder = new ArrayBuilder(this.parentBuilder, absoluteStart, absoluteEnd, this.originalText);
-						options.onFound(arrayBuilder);
-						return;
+		const variableGroup = this.findGroup(
+			(group) => group.type === 'VariableDeclaration' && group.name === variableName
+		);
+
+		if (!variableGroup) {
+			if (DEBUG) console.log(`TypeScriptCodeBuilder.findArray: Variable declaration "${variableName}" not found.`);
+			options.onNotFound?.();
+			return;
+		}
+
+		// First, try to find the array literal as a direct child
+		let arrayLiteralGroup = variableGroup.children?.find(child => child.type === 'ArrayLiteral');
+
+		if (!arrayLiteralGroup) {
+			// If not found as a child, try to find it manually in the tokens
+			if (DEBUG) console.log(`TypeScriptCodeBuilder.findArray: No array literal child for "${variableName}", trying to find it in tokens.`);
+
+			// Find the assignment token (=)
+			let equalsTokenIndex = -1;
+			for (let i = 0; i < variableGroup.tokens.length; i++) {
+				if (variableGroup.tokens[i].name === '=') {
+					equalsTokenIndex = i;
+					break;
+				}
+			}
+
+			if (equalsTokenIndex === -1 || equalsTokenIndex >= variableGroup.tokens.length - 1) {
+				if (DEBUG) console.log(`TypeScriptCodeBuilder.findArray: No assignment token found for "${variableName}".`);
+				options.onNotFound?.();
+				return;
+			}
+
+			// Find the next non-whitespace token after '='
+			let openBracketIndex = -1;
+			for (let i = equalsTokenIndex + 1; i < variableGroup.tokens.length; i++) {
+				if (variableGroup.tokens[i].type !== 'whitespace') {
+					if (variableGroup.tokens[i].name === '[') {
+						openBracketIndex = i;
+					}
+					break;
+				}
+			}
+
+			if (openBracketIndex === -1) {
+				if (DEBUG) console.log(`TypeScriptCodeBuilder.findArray: No opening bracket found after '=' for "${variableName}".`);
+				options.onNotFound?.();
+				return;
+			}
+
+			// Extract the array literal by finding matching brackets
+			let bracketDepth = 1;
+			let closeBracketIndex = -1;
+
+			for (let i = openBracketIndex + 1; i < variableGroup.tokens.length; i++) {
+				const token = variableGroup.tokens[i];
+				if (token.name === '[') {
+					bracketDepth++;
+				} else if (token.name === ']') {
+					bracketDepth--;
+					if (bracketDepth === 0) {
+						closeBracketIndex = i;
+						break;
 					}
 				}
 			}
+
+			if (closeBracketIndex === -1) {
+				if (DEBUG) console.log(`TypeScriptCodeBuilder.findArray: No closing bracket found for array literal in "${variableName}".`);
+				options.onNotFound?.();
+				return;
+			}
+
+			// Create a synthetic array literal group
+			const openBracketToken = variableGroup.tokens[openBracketIndex];
+			const closeBracketToken = variableGroup.tokens[closeBracketIndex];
+
+			arrayLiteralGroup = {
+				type: 'ArrayLiteral',
+				start: openBracketToken.start,
+				end: closeBracketToken.end,
+				tokens: variableGroup.tokens.slice(openBracketIndex, closeBracketIndex + 1),
+				children: [],
+				metadata: {}
+			};
 		}
-		if (options.onNotFound) {
-			options.onNotFound();
+
+		if (arrayLiteralGroup) {
+			if (DEBUG) console.log(`TypeScriptCodeBuilder.findArray: Found array literal for "${variableName}".`);
+			const arrayBuilder = new TypeScriptArrayBuilder(this, arrayLiteralGroup, this.originalText);
+			options.onFound(arrayBuilder);
+		} else {
+			if (DEBUG) console.log(`TypeScriptCodeBuilder.findArray: Variable "${variableName}" does not have an array literal initializer.`);
+			options.onNotFound?.();
 		}
+	}
+
+	/**
+	 * Finds the type annotation associated with a variable declaration.
+	 * Locates the variable declaration group and then finds the relevant tokens within it
+	 * to determine the start and end of the type annotation.
+	 * @param variableName The name of the variable whose type annotation is sought.
+	 * @param options Callbacks for handling success or failure.
+	 */
+	public findType(
+		variableName: string,
+		options: {
+			onFound: (typeBuilder: TypeScriptTypeBuilder) => void;
+			onNotFound?: () => void;
+		}
+	): void {
+		if (!this.rootGroup) {
+			if (DEBUG) console.log(`TypeScriptCodeBuilder.findType: No root group found.`);
+			options.onNotFound?.();
+			return;
+		}
+
+		const variableGroup = this.findGroup(
+			(group) => group.type === 'VariableDeclaration' && group.name === variableName
+		);
+
+		if (!variableGroup || !variableGroup.tokens || variableGroup.tokens.length === 0) {
+			if (DEBUG) console.log(`TypeScriptCodeBuilder.findType: Variable declaration "${variableName}" not found or has no tokens.`);
+			options.onNotFound?.();
+			return;
+		}
+
+		// --- Find type annotation range using tokens ---
+		let nameTokenIndex = -1;
+		let colonTokenIndex = -1;
+		let endTokenIndex = -1; // Index of '=' or ';' that ends the type
+
+		// Find the index of the token corresponding to the variable name
+		// This is slightly naive, assumes the name isn't complex (like destructuring)
+		// and the 'name' property on the group matches a token's text/name exactly.
+		for (let i = 0; i < variableGroup.tokens.length; i++) {
+			// Check token name or extract text if name is missing (e.g., for 'unknown' type tokens)
+			const tokenText = variableGroup.tokens[i].name ?? this.originalText.substring(variableGroup.tokens[i].start, variableGroup.tokens[i].end);
+			if (tokenText === variableName) {
+				// A better check might involve ensuring it's not a keyword and follows let/const/var
+				// For now, let's assume the first match is correct after the keyword.
+				if (i > 0 && variableGroup.tokens[i - 1].type === 'variable') {
+					nameTokenIndex = i;
+					break;
+				} else if (i === 0 && variableGroup.tokens[i].type === 'variable') {
+					// Handle case like `let {x}` - the group name is `let_ObjectPattern`, variableName is `x`
+					// This logic needs refinement for destructuring. Let's proceed assuming simple names for now.
+				} else if (variableGroup.tokens[i].type === 'unknown') {
+					// Fallback for simple identifiers marked as unknown
+					nameTokenIndex = i;
+					break;
+				}
+
+			}
+		}
+
+		// If name token wasn't found via simple check, bail out (or add more complex logic for destructuring)
+		if (nameTokenIndex === -1) {
+			if (DEBUG) console.log(`TypeScriptCodeBuilder.findType: Could not locate name token for "${variableName}" within variable group tokens.`);
+			// Try finding based on group name if it's not a pattern
+			if (!variableGroup.name?.includes('Pattern')) {
+				for (let i = 0; i < variableGroup.tokens.length; i++) {
+					if (variableGroup.tokens[i].name === variableGroup.name && variableGroup.tokens[i].type === 'unknown') {
+						nameTokenIndex = i;
+						break;
+					}
+				}
+			}
+			if (nameTokenIndex === -1) {
+				options.onNotFound?.();
+				return;
+			}
+		}
+
+
+		// Find the colon ':' after the name token
+		for (let i = nameTokenIndex + 1; i < variableGroup.tokens.length; i++) {
+			if (variableGroup.tokens[i].name === ':') {
+				colonTokenIndex = i;
+				break;
+			}
+			// Stop if we hit '=' or ';' before finding ':'
+			if (variableGroup.tokens[i].name === '=' || variableGroup.tokens[i].name === ';') {
+				break;
+			}
+		}
+
+		if (colonTokenIndex === -1) {
+			if (DEBUG) console.log(`TypeScriptCodeBuilder.findType: No type annotation colon found for "${variableName}".`);
+			options.onNotFound?.();
+			return;
+		}
+
+		// Find the '=' or ';' that marks the end of the type annotation
+		// Need to handle potential nested structures in complex types
+		let nestingLevel = 0; // Track <>, {}, []
+		for (let i = colonTokenIndex + 1; i < variableGroup.tokens.length; i++) {
+			const token = variableGroup.tokens[i];
+
+			// Adjust nesting level
+			if (token.name === '<' || token.name === '{' || token.name === '[') nestingLevel++;
+			else if (token.name === '>' || token.name === '}' || token.name === ']') nestingLevel--;
+
+			// Check for end token only at the top level
+			if (nestingLevel === 0 && (token.name === '=' || token.name === ';')) {
+				endTokenIndex = i;
+				break;
+			}
+		}
+
+		// If no '=' or ';' found, the type might extend to the end of the group's tokens
+		if (endTokenIndex === -1) {
+			endTokenIndex = variableGroup.tokens.length;
+		}
+
+		// Define the start and end positions
+		const typeStartToken = variableGroup.tokens[colonTokenIndex + 1]; // First token of the type
+		const typeEndToken = variableGroup.tokens[endTokenIndex - 1]; // Last token of the type
+
+		// Check if tokens exist (array might be empty after colon)
+		if (!typeStartToken || !typeEndToken) {
+			if (DEBUG) console.log(`TypeScriptCodeBuilder.findType: Could not determine valid start/end token for type annotation of "${variableName}".`);
+			options.onNotFound?.();
+			return;
+		}
+
+		const typeStartPos = typeStartToken.start;
+		const typeEndPos = typeEndToken.end; // Use end of the last token *before* the delimiter
+
+
+		// Basic validation
+		if (typeStartPos >= typeEndPos) {
+			if (DEBUG) console.log(`TypeScriptCodeBuilder.findType: Invalid type range calculated for "${variableName}" (start >= end). Start: ${typeStartPos}, End: ${typeEndPos}`);
+			options.onNotFound?.();
+			return;
+		}
+
+		if (DEBUG) console.log(`TypeScriptCodeBuilder.findType: Found type annotation for "${variableName}" from ${typeStartPos} to ${typeEndPos}.`);
+		const typeBuilder = new TypeScriptTypeBuilder(this, typeStartPos, typeEndPos, this.originalText);
+		options.onFound(typeBuilder);
+	}
+
+	/**
+	 * Finds a class declaration by name.
+	 * Uses the TokenGroup hierarchy.
+	 * @param className The name of the class to find.
+	 * @param options Callbacks for handling success or failure.
+	 */
+	public findClass(
+		className: string,
+		options: {
+			onFound: (classBuilder: TypeScriptClassBuilder) => void;
+			onNotFound?: () => void;
+		}
+	): void {
+		if (!this.rootGroup) {
+			if (DEBUG) console.log(`TypeScriptCodeBuilder.findClass: No root group found.`);
+			options.onNotFound?.();
+			return;
+		}
+
+		const classGroup = this.findGroup(
+			(group) => group.type === 'ClassDeclaration' && group.name === className
+		);
+
+		if (classGroup) {
+			if (DEBUG) console.log(`TypeScriptCodeBuilder.findClass: Found class "${className}".`);
+			const classBuilder = new TypeScriptClassBuilder(this, classGroup, this.originalText);
+			options.onFound(classBuilder);
+		} else {
+			if (DEBUG) console.log(`TypeScriptCodeBuilder.findClass: Class "${className}" not found.`);
+			options.onNotFound?.();
+		}
+	}
+
+	/**
+	 * Finds an interface declaration by name.
+	 * Uses the TokenGroup hierarchy.
+	 * @param interfaceName The name of the interface to find.
+	 * @param options Callbacks for handling success or failure.
+	 */
+	public findInterface(
+		interfaceName: string,
+		options: {
+			onFound: (interfaceBuilder: TypeScriptInterfaceBuilder) => void;
+			onNotFound?: () => void;
+		}
+	): void {
+		if (!this.rootGroup) {
+			if (DEBUG) console.log(`TypeScriptCodeBuilder.findInterface: No root group found.`);
+			options.onNotFound?.();
+			return;
+		}
+
+		const interfaceGroup = this.findGroup(
+			(group) => group.type === 'InterfaceDeclaration' && group.name === interfaceName
+		);
+
+		if (interfaceGroup) {
+			if (DEBUG) console.log(`TypeScriptCodeBuilder.findInterface: Found interface "${interfaceName}".`);
+			const interfaceBuilder = new TypeScriptInterfaceBuilder(this, interfaceGroup, this.originalText);
+			options.onFound(interfaceBuilder);
+		} else {
+			if (DEBUG) console.log(`TypeScriptCodeBuilder.findInterface: Interface "${interfaceName}" not found.`);
+			options.onNotFound?.();
+		}
+	}
+
+	/**
+	 * Schedules a text modification (replacement, insertion, or deletion).
+	 * Edits are stored and applied later by `toString()`.
+	 * Positions must refer to the original source text.
+	 * @param start The starting index in the original source text (inclusive).
+	 * @param end The ending index in the original source text (exclusive).
+	 * @param replacement The text to insert. Use an empty string for deletion.
+	 */
+	public addEdit(start: number, end: number, replacement: string): void {
+		if (start < 0 || end < start || end > this.originalText.length) {
+			console.warn(`TypeScriptCodeBuilder.addEdit: Invalid edit range provided. Start: ${start}, End: ${end}, Text Length: ${this.originalText.length}`);
+			// Optionally throw an error or just ignore the invalid edit
+			return;
+		}
+		this.edits.push({ start, end, replacement });
+		if (DEBUG) console.log(`TypeScriptCodeBuilder.addEdit: Scheduled edit from ${start} to ${end} with "${replacement.substring(0, 50)}${replacement.length > 50 ? '...' : ''}"`);
+	}
+
+	/**
+	 * Applies all scheduled edits to the original source code.
+	 * Edits are applied sequentially, adjusting positions for subsequent edits
+	 * based on the length changes introduced by prior edits.
+	 * @returns A Promise resolving to the modified source code as a string.
+	 */
+	public toString(): Promise<string> {
+		if (this.edits.length === 0) {
+			if (DEBUG) console.log("TypeScriptCodeBuilder.toString: No edits to apply.");
+			return Promise.resolve(this.originalText);
+		}
+	
+		// Sort edits by start position primarily, and end position secondarily (desc)
+		// Sorting by end descending helps handle nested replacements correctly (outer first)
+		const sortedEdits = [...this.edits].sort((a, b) => {
+			if (a.start !== b.start) {
+				return a.start - b.start;
+			}
+			return b.end - a.end; // Replace larger ranges first if starts are the same
+		});
+	
+		let modifiedText = this.originalText;
+		let cumulativeOffset = 0; // Tracks the accumulated offset from all previous edits
+	
+		if (DEBUG) console.log(`TypeScriptCodeBuilder.toString: Applying ${sortedEdits.length} edits.`);
+	
+		for (const edit of sortedEdits) {
+			// Adjust the start and end positions based on the cumulative offset
+			const adjustedStart = edit.start + cumulativeOffset;
+			const adjustedEnd = edit.end + cumulativeOffset;
+	
+			// Check if the adjusted range is still valid
+			if (adjustedStart < 0 || adjustedEnd < adjustedStart || adjustedEnd > modifiedText.length) {
+				console.error(`TypeScriptCodeBuilder.toString: Invalid adjusted edit range. Original: [${edit.start}, ${edit.end}], Adjusted: [${adjustedStart}, ${adjustedEnd}], ModText Length: ${modifiedText.length}. Skipping edit.`);
+				continue;
+			}
+	
+			if (DEBUG) console.log(`TypeScriptCodeBuilder.toString: Applying edit [${adjustedStart}, ${adjustedEnd}] replacing with "${edit.replacement.substring(0, 50)}${edit.replacement.length > 50 ? '...' : ''}". Offset: ${cumulativeOffset}`);
+	
+			// Apply the edit
+			modifiedText = modifiedText.slice(0, adjustedStart) + edit.replacement + modifiedText.slice(adjustedEnd);
+	
+			// Update the cumulative offset based on the net change in length
+			const lengthDelta = edit.replacement.length - (edit.end - edit.start);
+			cumulativeOffset += lengthDelta;
+	
+			if (DEBUG) console.log(`TypeScriptCodeBuilder.toString: Length delta: ${lengthDelta}, New offset: ${cumulativeOffset}`);
+		}
+	
+		// Clear edits after applying them
+		this.edits = [];
+	
+		return Promise.resolve(modifiedText);
+	}
+
+	/**
+	 * Inserts a string of TypeScript code at a position relative to the top-level elements.
+	 * Treats the top-level declarations (classes, functions, variables, etc.) as an ordered list.
+	 *
+	 * **Important:** This operation schedules an edit but does *not* update the internal
+	 * TokenGroup structure. Subsequent calls to find methods or insertions within the same
+	 * builder instance might yield incorrect results until `toString()` is called and the
+	 * code is potentially re-parsed in a new builder instance.
+	 *
+	 * @param index The index at which to insert the code.
+	 *              0 means insert before the first element.
+	 *              `numberOfTopLevelElements` means insert after the last element.
+	 * @param codeToInsert The raw TypeScript code string to insert. Basic newline formatting is added.
+	 * @throws Error if the index is out of bounds or if the code structure hasn't been parsed.
+	 */
+	public insertCodeAtIndex(index: number, codeToInsert: string): void {
+		if (!this.rootGroup) {
+			throw new Error("Cannot insert code: Code structure has not been parsed successfully.");
+		}
+		if (codeToInsert == null) { // Allow empty string but not null/undefined
+			throw new Error("Cannot insert code: Code to insert cannot be null or undefined.");
+		}
+
+		const topLevelElements = this.rootGroup.children ?? [];
+		const count = topLevelElements.length;
+
+		if (index < 0 || index > count) {
+			throw new Error(`Index out of bounds: Cannot insert at index ${index}. Valid range is 0 to ${count}.`);
+		}
+
+		let insertionPos: number;
+		let needsLeadingNewline = false;
+		let needsTrailingNewline = false;
+
+		if (index === 0) {
+			// Insert before the first element (or at the start if no elements)
+			if (topLevelElements.length > 0) {
+				insertionPos = topLevelElements[0].start;
+				// Check if the insertion point is not the very start of the file
+				// If it is, we don't add a leading newline.
+				needsLeadingNewline = insertionPos > 0;
+				needsTrailingNewline = true; // Always add after if inserting at beginning
+			} else {
+				// Inserting into an empty or whitespace-only file
+				insertionPos = this.rootGroup.start; // Usually 0
+				// No leading/trailing newline needed if inserting into truly empty space
+				needsLeadingNewline = false;
+				needsTrailingNewline = false; // Avoid adding newline if file was empty
+			}
+		} else {
+			// Insert after the element at index - 1
+			const precedingElement = topLevelElements[index - 1];
+			insertionPos = precedingElement.end;
+			needsLeadingNewline = true; // Always add newline before when inserting after something
+			needsTrailingNewline = true; // Always add newline after
+		}
+
+		// Adjust insertion position to be after any trailing whitespace of the preceding element
+		// This helps ensure the new code starts on a new line correctly.
+		if (needsLeadingNewline) {
+			while (insertionPos < this.originalText.length && /\s/.test(this.originalText[insertionPos])) {
+				insertionPos++;
+			}
+		}
+
+
+		// Add basic formatting (newlines)
+		let formattedCode = codeToInsert;
+		if (needsLeadingNewline) {
+			// Check if the user code already starts with a newline, or if the insertion point is already preceded by one.
+			const charBefore = insertionPos > 0 ? this.originalText[insertionPos - 1] : '';
+			if (!codeToInsert.startsWith('\n') && charBefore !== '\n') {
+				formattedCode = '\n' + formattedCode;
+			}
+		}
+		if (needsTrailingNewline) {
+			// Check if the user code already ends with a newline.
+			if (!codeToInsert.endsWith('\n')) {
+				formattedCode = formattedCode + '\n';
+			}
+		}
+
+		// Ensure at least one newline separation if both preceding and succeeding elements exist
+		if (index > 0 && index < topLevelElements.length) {
+			if (!formattedCode.startsWith('\n')) formattedCode = '\n' + formattedCode;
+			if (!formattedCode.endsWith('\n')) formattedCode = formattedCode + '\n';
+		}
+		// Add extra newline for separation between top-level elements
+		if (needsLeadingNewline && !formattedCode.startsWith('\n\n') && formattedCode.startsWith('\n')) {
+			formattedCode = '\n' + formattedCode; // Make it two newlines before
+		}
+
+
+		if (DEBUG) console.log(`TypeScriptCodeBuilder.insertCodeAtIndex: Determined insertion position ${insertionPos} for index ${index}.`);
+
+		this.addEdit(insertionPos, insertionPos, formattedCode);
 	}
 }
 
+/******************************************************
+ * Object Literal Builder
+ ******************************************************/
+
 /**
- * Builder for array literals.
- * Provides methods to work with array elements.
+ * Provides methods for inspecting and modifying a specific object literal ({ ... }).
+ * Operates based on a TokenGroup of type 'ObjectLiteral'.
  */
-export class ArrayBuilder {
+export class TypeScriptObjectBuilder {
 	/**
-	 * @param parentBuilder - A reference to the top-level code builder.
-	 * @param arrStart - The starting index (in the original text) of the array literal.
-	 * @param arrEnd - The ending index (in the original text) of the array literal.
-	 * @param originalText - The complete original source code.
+	 * Creates an instance of TypeScriptObjectBuilder.
+	 * Typically instantiated by TypeScriptCodeBuilder.
+	 * @param parentBuilder The main code builder instance, used for adding edits.
+	 * @param objectGroup The TokenGroup representing the object literal.
+	 * @param originalText The full original source code text.
 	 */
 	constructor(
 		private parentBuilder: TypeScriptCodeBuilder,
-		private arrStart: number,
-		private arrEnd: number,
+		public objectGroup: TokenGroup,
 		private originalText: string
-	) { }
+	) {
+		console.log(parentBuilder);
+		console.log(originalText);
+	}
 
 	/**
-	 * Retrieves the object builders for each object element within the array literal.
-	 * It re-parses the array literal using the TypeScriptArrayParser and then
-	 * creates an ObjectBuilder for each nested object literal.
-	 * @returns An array of ObjectBuilder instances.
+	 * Sets or replaces the value of a property within the object literal.
+	 * If the property exists, its value is replaced.
+	 * If the property does not exist, it is added (implementation detail: consider formatting, placement).
+	 * Handles simple key: value pairs. More complex values (nested objects/arrays) might require finding the value token range.
+	 * @param propertyName The name of the property (key).
+	 * @param newValue The new value as a string literal (e.g., "'new value'", "42", "true", "{ nested: true }").
+	 *                 The string should be a valid TypeScript expression for the value.
 	 */
-	public getItems(): ObjectBuilder[] {
-		const arrayText = this.originalText.substring(this.arrStart, this.arrEnd);
-		const pointer = new SourcePointer(arrayText);
-		const tokenizer = new Tokenizer(pointer);
-		const tokens = tokenizer.tokenize();
-		const stream = new TokenStream(tokens);
-		const arrayParser = new TypeScriptArrayParser(stream, arrayText);
-		const parsedTokens = arrayParser.parseArray();
+	public setPropertyValue(propertyName: string, newValue: string): void {
 
-		const objectBuilders: ObjectBuilder[] = [];
-		// Iterate through tokens and create an ObjectBuilder for each object literal.
-		for (const token of parsedTokens) {
-			if (token.type === 'object') {
-				const absoluteStart = this.arrStart + token.start;
-				const absoluteEnd = this.arrStart + token.end;
-				objectBuilders.push(new ObjectBuilder(this.parentBuilder, absoluteStart, absoluteEnd, this.originalText));
-			}
+	}
+
+	/**
+	 * Removes a property (key-value pair) from the object literal.
+	 * Handles removing the property and the preceding/succeeding comma and whitespace correctly.
+	 * @param propertyName The name of the property to remove.
+	 * @returns True if the property was found and removed, false otherwise.
+	 */
+	public removeProperty(propertyName: string): boolean {
+		throw new Error("Not implemented");
+	}
+
+	/**
+	 * Finds a property whose value is an array literal and provides an ArrayBuilder for it.
+	 * @param propertyName The name of the property whose value should be an array.
+	 * @param options Callbacks for handling success or failure.
+	 * @param options.onFound Called with an ArrayBuilder if the property is found and its value is an array literal.
+	 * @param options.onNotFound Called if the property is not found or its value is not an array literal.
+	 */
+	public findArray(
+		propertyName: string,
+		options: {
+			onFound: (arrayBuilder: TypeScriptArrayBuilder) => void;
+			onNotFound?: () => void;
 		}
-		return objectBuilders;
+	): void {
+
+	}
+
+	/**
+	 * Finds a property whose value is an object literal and provides an ObjectBuilder for it.
+	 * @param propertyName The name of the property whose value should be an object.
+	 * @param options Callbacks for handling success or failure.
+	 * @param options.onFound Called with an ObjectBuilder if the property is found and its value is an object literal.
+	 * @param options.onNotFound Called if the property is not found or its value is not an object literal.
+	 */
+	public findObject(
+		propertyName: string,
+		options: {
+			onFound: (objectBuilder: TypeScriptObjectBuilder) => void;
+			onNotFound?: () => void;
+		}
+	): void {
+
+	}
+
+	/**
+	 * Gets the string representation of the object literal content (excluding the outer braces).
+	 * This reflects the current state including any pending edits within this object.
+	 * (Note: Implementing this accurately requires applying edits specifically within this range).
+	 * @returns The content of the object literal.
+	 */
+	public getContentText(): string {
+		throw new Error("Not implemented");
+	}
+
+	/**
+	 * Gets the full string representation of the object literal (including the outer braces).
+	 * This reflects the current state including any pending edits within this object.
+	 * @returns The full object literal text.
+	 */
+	public getFullText(): string {
+		throw new Error("Not implemented");
 	}
 }
 
-
 /******************************************************
- * TypeScriptTypeBuilder
- * 
- * A builder to modify TypeScript type expressions in the source code.
- * It uses the TypeScriptTypeParser to parse a type expression and
- * provides methods to list union types and add a new type to the union.
+ * Array Literal Builder
  ******************************************************/
-export class TypeScriptTypeBuilder {
-	// The parsed type (as a ParsedTypeToken) representing the type expression.
-	private parsedType: ParsedTypeToken;
-	// The current type expression text (extracted from the original source).
-	private typeText: string;
+
+/**
+ * Provides methods for inspecting and modifying a specific array literal ([ ... ]).
+ * Operates based on a TokenGroup of type 'ArrayLiteral'.
+ */
+export class TypeScriptArrayBuilder {
+	/**
+	 * Creates an instance of TypeScriptArrayBuilder.
+	 * Typically instantiated by TypeScriptCodeBuilder or TypeScriptObjectBuilder.
+	 * @param parentBuilder The main code builder instance, used for adding edits.
+	 * @param arrayGroup The TokenGroup representing the array literal.
+	 * @param originalText The full original source code text.
+	 */
+	constructor(
+		private parentBuilder: TypeScriptCodeBuilder,
+		public arrayGroup: TokenGroup,
+		private originalText: string
+	) {
+
+	}
 
 	/**
-	 * @param parentBuilder - A reference to the top-level code builder.
-	 * @param typeStart - The starting index (in the original text) of the type expression.
-	 * @param typeEnd - The ending index (in the original text) of the type expression.
-	 * @param originalText - The complete original source code.
+	 * Adds a new item (as a string literal) to the end of the array.
+	 * Handles correct placement, comma insertion, and formatting (respecting existing style if possible).
+	 * @param itemToAdd The string representation of the item to add (e.g., "'new'", "123", "{ id: 1 }").
+	 *                  Must be a valid TypeScript expression.
+	 */
+	public addItem(itemToAdd: string): void {
+
+	}
+
+	/**
+	 * Inserts a new item (as a string literal) at a specific index in the array.
+	 * Handles correct placement, comma insertion, and formatting.
+	 * @param index The zero-based index at which to insert the item.
+	 * @param itemToAdd The string representation of the item to insert.
+	 */
+	public insertItemAtIndex(index: number, itemToAdd: string): void {
+
+	}
+
+
+	/**
+	 * Removes the item at the specified index from the array.
+	 * Handles removing the item and the preceding/succeeding comma and whitespace correctly.
+	 * @param indexToRemove The zero-based index of the item to remove.
+	 * @returns True if an item was removed at the index, false if the index was out of bounds.
+	 * @throws Error if index is out of bounds (alternative: return false).
+	 */
+	public removeItemAtIndex(indexToRemove: number): boolean {
+		throw new Error("Not implemented");
+	}
+
+	/**
+	 * Replaces the item at the specified index with a new item.
+	 * @param index The zero-based index of the item to replace.
+	 * @param newItem The string representation of the new item.
+	 * @returns True if an item was replaced at the index, false if the index was out of bounds.
+	 */
+	public replaceItemAtIndex(index: number, newItem: string): boolean {
+		throw new Error("Not implemented");
+	}
+
+
+	/**
+	 * Gets builders for all object literal elements within the array.
+	 * Filters out non-object elements.
+	 * @returns An array of TypeScriptObjectBuilder instances.
+	 */
+	public getObjectItems(): TypeScriptObjectBuilder[] {
+		throw new Error("Not implemented");
+	}
+
+	/**
+	 * Gets builders for all array literal elements within the array.
+	 * Filters out non-array elements.
+	 * @returns An array of TypeScriptArrayBuilder instances.
+	 */
+	public getArrayItems(): TypeScriptArrayBuilder[] {
+		throw new Error("Not implemented");
+	}
+
+	/**
+	 * Gets the string representation of all elements in the array.
+	 * Parses the array content to identify individual elements.
+	 * @returns An array of strings, each representing an element.
+	 */
+	public getItemTexts(): string[] {
+		throw new Error("Not implemented");
+	}
+
+	/**
+	 * Gets the number of elements currently in the array.
+	 * Parses the array content to count elements.
+	 * @returns The count of elements.
+	 */
+	public getItemCount(): number {
+		throw new Error("Not implemented");
+	}
+
+	/**
+	 * Gets the string representation of the array content (excluding the outer brackets).
+	 * Reflects the current state including pending edits.
+	 * @returns The content of the array literal.
+	 */
+	public getContentText(): string {
+		throw new Error("Not implemented");
+	}
+
+	/**
+	 * Gets the full string representation of the array literal (including the outer brackets).
+	 * Reflects the current state including pending edits.
+	 * @returns The full array literal text.
+	 */
+	public getFullText(): string {
+		throw new Error("Not implemented");
+	}
+}
+
+/******************************************************
+ * Type Annotation Builder
+ ******************************************************/
+
+/**
+ * Provides methods for inspecting and modifying a specific type annotation.
+ * Operates based on the start/end positions of the type annotation text.
+ * Uses TypeScriptTypeParser internally.
+ */
+export class TypeScriptTypeBuilder {
+	private typeText: string; // Current text representation of the type
+	private parsedType: any; // Parsed representation (e.g., from TypeScriptTypeParser) - Use specific type if available
+
+	/**
+	 * Creates an instance of TypeScriptTypeBuilder.
+	 * Typically instantiated by TypeScriptCodeBuilder.findType.
+	 * @param parentBuilder The main code builder instance for adding edits.
+	 * @param typeStart The start index of the type annotation in the original source.
+	 * @param typeEnd The end index of the type annotation in the original source.
+	 * @param originalText The full original source code text.
 	 */
 	constructor(
 		private parentBuilder: TypeScriptCodeBuilder,
@@ -1700,65 +2815,283 @@ export class TypeScriptTypeBuilder {
 		private typeEnd: number,
 		private originalText: string
 	) {
-		// Extract the type expression text from the original source.
-		this.typeText = this.originalText.substring(this.typeStart, this.typeEnd);
-		// Parse the type expression.
-		const parser = new TypeScriptTypeParser(this.typeText);
-		this.parsedType = parser.parseType();
+		this.typeText = originalText.substring(typeStart, typeEnd);
 	}
 
 	/**
-	 * Returns an array of string representations of the types in the union.
-	 * If the type is not a union, returns an array with a single element.
-	 */
-	public getUnionTypes(): string[] {
-		if (this.parsedType.kind === 'union' && this.parsedType.subTypes) {
-			// Map each subtype's relative positions to the typeText.
-			return this.parsedType.subTypes.map((subType) =>
-				this.typeText.substring(subType.start, subType.end).trim()
-			);
-		}
-		return [this.typeText.trim()];
-	}
-
-	/**
-	 * Appends a new type to the union.
-	 * If the current type is not a union, it converts it into a union with the new type.
-	 * Schedules an edit in the parent builder.
-	 * @param newType - The new type to add to the union.
-	 */
-	public addUnionType(newType: string): void {
-		// Normalize the current type text and add a single space before and after the new union.
-		const normalizedCurrent = this.typeText.trim();
-		const normalizedNew = newType.trim();
-		const updatedTypeText = " " + normalizedCurrent + " | " + normalizedNew + " ";
-
-		// Schedule the replacement in the source text.
-		this.parentBuilder.addEdit(this.typeStart, this.typeEnd, updatedTypeText);
-
-		// Update the internal state.
-		this.typeText = updatedTypeText;
-		const parser = new TypeScriptTypeParser(this.typeText);
-		this.parsedType = parser.parseType();
-	}
-
-	/**
-	 * Replaces the entire type expression with a new type.
-	 * Schedules an edit in the parent builder.
-	 * @param newType - The new type expression to set.
-	 */
-	public setType(newType: string): void {
-		const normalizedNew = " " + newType.trim() + " ";
-		this.parentBuilder.addEdit(this.typeStart, this.typeEnd, normalizedNew);
-		this.typeText = normalizedNew;
-		const parser = new TypeScriptTypeParser(this.typeText);
-		this.parsedType = parser.parseType();
-	}
-
-	/**
-	 * Retrieves the current type expression text.
+	 * Gets the current text of the entire type annotation.
+	 * Reflects the latest state after potential modifications.
+	 * @returns The type annotation string.
 	 */
 	public getTypeText(): string {
-		return this.typeText.trim();
+		return this.typeText;
 	}
+
+	/**
+	 * Replaces the entire type annotation with a new type string.
+	 * @param newType The new type annotation string (e.g., "string", "number | null", "Array<User>").
+	 */
+	public setType(newType: string): void {
+
+	}
+
+	/**
+	 * If the current type is a union, returns the text representations of its constituent types.
+	 * If the current type is not a union, returns an array containing the single type text.
+	 * @returns An array of strings representing the types in the union (or the single type).
+	 */
+	public getUnionTypes(): string[] {
+		throw new Error("Not implemented");
+	}
+
+	/**
+	 * Adds a new type to the current type annotation, forming a union if necessary.
+	 * If the type already exists in the union, no change is made.
+	 * Handles correct formatting with the '|' operator and spacing.
+	 * @param newType The type string to add to the union (e.g., "string", "null", "MyInterface").
+	 */
+	public addUnionType(newType: string): void {
+
+	}
+
+	/**
+	 * Removes a specific type from a union type annotation.
+	 * If the type is not part of the union, or if removing it would leave an empty union,
+	 * no change is made (or an error might be thrown, TBD).
+	 * Handles cleanup of '|' operators and spacing.
+	 * @param typeToRemove The type string to remove from the union.
+	 * @returns True if the type was successfully removed, false otherwise.
+	 */
+	public removeUnionType(typeToRemove: string): boolean {
+		throw new Error("Not implemented");
+	}
+
+	/**
+	 * Checks if the type annotation represents a union type.
+	 * @returns True if the type is currently a union, false otherwise.
+	 */
+	public isUnionType(): boolean {
+		return this.typeText.includes('|');
+	}
+
+	// TODO: Add methods for generics? e.g., getGenericArguments, addGenericArgument etc.
+	// This would require enhancing the TypeScriptTypeParser or the representation here.
+}
+
+
+/******************************************************
+ * Class Declaration Builder
+ ******************************************************/
+
+/**
+ * Provides methods for inspecting and modifying a specific class declaration.
+ * Operates based on a TokenGroup of type 'ClassDeclaration'.
+ */
+export class TypeScriptClassBuilder {
+	/**
+	 * Creates an instance of TypeScriptClassBuilder.
+	 * Typically instantiated by TypeScriptCodeBuilder.findClass.
+	 * @param parentBuilder The main code builder instance for adding edits.
+	 * @param classGroup The TokenGroup representing the class declaration.
+	 * @param originalText The full original source code text.
+	 */
+	constructor(
+		private parentBuilder: TypeScriptCodeBuilder,
+		public classGroup: TokenGroup,
+		private originalText: string
+	) {
+
+	}
+
+	/**
+	 * Gets the name of the class.
+	 * @returns The class name string.
+	 */
+	public getName(): string | undefined {
+		throw new Error("Not implemented");
+	}
+
+	/**
+	 * Renames the class. Schedules an edit for the class name identifier.
+	 * @param newName The new name for the class.
+	 */
+	public rename(newName: string): void {
+
+	}
+
+	/**
+	 * Adds a property declaration to the class body.
+	 * Handles formatting and placement within the class braces.
+	 * @param propertyDeclaration The full property declaration string (e.g., "public name: string;").
+	 */
+	public addProperty(propertyDeclaration: string): void {
+
+	}
+
+	/**
+	 * Adds a method declaration to the class body.
+	 * Handles formatting and placement within the class braces.
+	 * @param methodDeclaration The full method declaration string (e.g., "public getName(): string { return this.name; }").
+	 */
+	public addMethod(methodDeclaration: string): void {
+
+	}
+
+	/**
+	 * Finds a specific property within the class by name.
+	 * @param propertyName The name of the property to find.
+	 * @param options Callbacks for handling success or failure.
+	 * @param options.onFound Called with a builder or representation for the property (details TBD).
+	 * @param options.onNotFound Called if the property is not found.
+	 */
+	public findProperty(
+		propertyName: string,
+		options: {
+			onFound: (propertyBuilder: any /* Replace with specific PropertyBuilder if created */) => void;
+			onNotFound?: () => void;
+		}
+	): void {
+
+	}
+
+	/**
+	 * Finds a specific method within the class by name.
+	 * @param methodName The name of the method to find.
+	 * @param options Callbacks for handling success or failure.
+	 * @param options.onFound Called with a builder or representation for the method (details TBD).
+	 * @param options.onNotFound Called if the method is not found.
+	 */
+	public findMethod(
+		methodName: string,
+		options: {
+			onFound: (methodBuilder: any /* Replace with specific MethodBuilder if created */) => void;
+			onNotFound?: () => void;
+		}
+	): void {
+
+	}
+
+	/**
+	 * Adds an interface name to the 'implements' clause.
+	 * Handles creating the clause if it doesn't exist.
+	 * @param interfaceName The name of the interface to implement.
+	 */
+	public addImplements(interfaceName: string): void {
+
+	}
+
+	/**
+	 * Sets or replaces the 'extends' clause.
+	 * @param className The name of the class to extend. Pass null or undefined to remove the extends clause.
+	 */
+	public setExtends(className: string | null | undefined): void {
+
+	}
+
+	// TODO: Add methods for removing implements, getting metadata, etc.
+}
+
+
+/******************************************************
+ * Interface Declaration Builder
+ ******************************************************/
+
+/**
+ * Provides methods for inspecting and modifying a specific interface declaration.
+ * Operates based on a TokenGroup of type 'InterfaceDeclaration'.
+ */
+export class TypeScriptInterfaceBuilder {
+	/**
+	 * Creates an instance of TypeScriptInterfaceBuilder.
+	 * Typically instantiated by TypeScriptCodeBuilder.findInterface.
+	 * @param parentBuilder The main code builder instance for adding edits.
+	 * @param interfaceGroup The TokenGroup representing the interface declaration.
+	 * @param originalText The full original source code text.
+	 */
+	constructor(
+		private parentBuilder: TypeScriptCodeBuilder,
+		public interfaceGroup: TokenGroup,
+		private originalText: string
+	) {
+
+	}
+
+	/**
+	 * Gets the name of the interface.
+	 * @returns The interface name string.
+	 */
+	public getName(): string | undefined {
+		throw new Error("Not implemented");
+	}
+
+	/**
+	 * Renames the interface. Schedules an edit for the interface name identifier.
+	 * @param newName The new name for the interface.
+	 */
+	public rename(newName: string): void {
+
+	}
+
+	/**
+	 * Adds a property signature to the interface body.
+	 * Handles formatting and placement within the interface braces.
+	 * @param propertySignature The full property signature string (e.g., "name: string;").
+	 */
+	public addProperty(propertySignature: string): void {
+
+	}
+
+	/**
+	 * Adds a method signature to the interface body.
+	 * Handles formatting and placement within the interface braces.
+	 * @param methodSignature The full method signature string (e.g., "getName(): string;").
+	 */
+	public addMethod(methodSignature: string): void {
+
+	}
+
+	/**
+	 * Finds a specific property signature within the interface by name.
+	 * @param propertyName The name of the property to find.
+	 * @param options Callbacks for handling success or failure.
+	 * @param options.onFound Called with a builder or representation for the property signature (details TBD).
+	 * @param options.onNotFound Called if the property signature is not found.
+	 */
+	public findProperty(
+		propertyName: string,
+		options: {
+			onFound: (propertyBuilder: any /* Replace with specific PropertyBuilder if created */) => void;
+			onNotFound?: () => void;
+		}
+	): void {
+
+	}
+
+	/**
+	 * Finds a specific method signature within the interface by name.
+	 * @param methodName The name of the method to find.
+	 * @param options Callbacks for handling success or failure.
+	 * @param options.onFound Called with a builder or representation for the method signature (details TBD).
+	 * @param options.onNotFound Called if the method signature is not found.
+	 */
+	public findMethod(
+		methodName: string,
+		options: {
+			onFound: (methodBuilder: any /* Replace with specific MethodBuilder if created */) => void;
+			onNotFound?: () => void;
+		}
+	): void {
+
+	}
+
+	/**
+	 * Adds an interface name to the 'extends' clause.
+	 * Handles creating the clause if it doesn't exist and adding to existing ones.
+	 * @param interfaceName The name of the interface to extend.
+	 */
+	public addExtends(interfaceName: string): void {
+
+	}
+
+	// TODO: Add methods for removing extends, getting metadata, etc.
 }

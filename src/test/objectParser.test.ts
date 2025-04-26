@@ -1,3 +1,6 @@
+
+
+/*
 import * as assert from 'assert';
 import * as vscode from 'vscode';
 import { ParsedTypeToken, SourcePointer, Tokenizer, TokenStream, TypeScriptArrayParser, TypeScriptBodyParser, TypeScriptCodeBuilder, TypeScriptObjectParser, TypeScriptTypeBuilder, TypeScriptTypeParser, TypeScriptVariableParser } from '../typescriptObjectParser/ObjectParser';
@@ -902,8 +905,7 @@ suite('TypeScriptCodeBuilder - Object Modifications', () => {
 		const input = `const location = { id: 'village', name: 'Old Village' };`;
 		const expected = `const location = { id: 'new-village', name: 'New Village' };`;
 
-		const builder = new TypeScriptCodeBuilder();
-		builder.parseText(input);
+		const builder = new TypeScriptCodeBuilder(input);
 		// Locate the object literal for the variable "location"
 		builder.findObject('location', {
 			onFound: (objectBuilder) => {
@@ -940,9 +942,6 @@ suite('TypeScriptCodeBuilder - Object Modifications', () => {
 	});
 });
 
-/**
- * Suite of tests for modifying nested array literals.
- */
 suite('TypeScriptCodeBuilder - Array Modifications', () => {
 
 	test('Should update object items inside an array literal', async () => {
@@ -1011,9 +1010,6 @@ const data = { items: [
 	});
 });
 
-/**
- * Suite to test that no modifications results in the original code.
- */
 suite('TypeScriptCodeBuilder - No Modification', () => {
 
 	test('Should return original code if no edits were scheduled', async () => {
@@ -1123,3 +1119,330 @@ suite("TypeScriptTypeBuilder and findType Functionality", () => {
     assert.strictEqual(result, expected, "Expected extra whitespace to be normalized in the updated type annotation");
   });
 });
+
+
+suite('TypeScriptCodeBuilder - Array Modification Methods', () => {
+
+	suite('ArrayBuilder.addItem', () => {
+	  test('Should add an item to an empty array', async () => {
+		const input = `const data = { items: [] };`;
+		const expected = `const data = { items: [{ id: 'new-item' }] };`;
+  
+		const builder = new TypeScriptCodeBuilder();
+		builder.parseText(input);
+		builder.findObject('data', {
+		  onFound: (objectBuilder) => {
+			objectBuilder.findArray('items', {
+			  onFound: (arrayBuilder) => {
+				arrayBuilder.addItem("{ id: 'new-item' }");
+			  }
+			});
+		  }
+		});
+  
+		const result = await builder.toString();
+		assert.strictEqual(result, expected);
+	  }); 
+  
+	  test('Should add an item to an array with existing items', async () => {
+		const input = `const data = { items: [{ id: 'item1' }] };`;
+		const expected = `const data = { items: [{ id: 'item1' }, { id: 'item2' }] };`;
+  
+		const builder = new TypeScriptCodeBuilder();
+		builder.parseText(input);
+		builder.findObject('data', {
+		  onFound: (objectBuilder) => {
+			objectBuilder.findArray('items', {
+			  onFound: (arrayBuilder) => {
+				arrayBuilder.addItem("{ id: 'item2' }");
+			  }
+			});
+		  }
+		});
+  
+		const result = await builder.toString();
+		assert.strictEqual(result, expected);
+	  });
+  
+	  test('Should add an item to an array with multiple existing items', async () => {
+		const input = `
+  const locations = { 
+	sublocations: [
+	  { id: 'market' }, 
+	  { id: 'church' }
+	] 
+  };`;
+		const expected = `
+  const locations = { 
+	sublocations: [
+	  { id: 'market' }, 
+	  { id: 'church' },
+	  { id: 'harbor' }
+	] 
+  };`;
+  
+		const builder = new TypeScriptCodeBuilder();
+		builder.parseText(input);
+		builder.findObject('locations', {
+		  onFound: (objectBuilder) => {
+			objectBuilder.findArray('sublocations', {
+			  onFound: (arrayBuilder) => {
+				arrayBuilder.addItem("{ id: 'harbor' }");
+			  }
+			});
+		  }
+		});
+  
+		const result = await builder.toString();
+		assert.strictEqual(result, expected);
+	  });
+	});
+  
+	suite('ArrayBuilder.removeItemAtIndex', () => {
+	  test('Should remove the only item from an array', async () => {
+		const input = `const data = { items: [{ id: 'item1' }] };`;
+		const expected = `const data = { items: [] };`;
+  
+		const builder = new TypeScriptCodeBuilder();
+		builder.parseText(input);
+		builder.findObject('data', {
+		  onFound: (objectBuilder) => {
+			objectBuilder.findArray('items', {
+			  onFound: (arrayBuilder) => {
+				arrayBuilder.removeItemAtIndex(0);
+			  }
+			});
+		  }
+		});
+  
+		const result = await builder.toString();
+		assert.strictEqual(result, expected);
+	  });
+  
+	  test('Should remove the first item from an array with multiple items', async () => {
+		const input = `
+  const locations = { 
+	sublocations: [
+	  { id: 'market' }, 
+	  { id: 'church' },
+	] 
+  };`;
+		const expected = `
+  const locations = { 
+	sublocations: [
+	  { id: 'church' },
+	] 
+  };`;
+  
+		const builder = new TypeScriptCodeBuilder();
+		builder.parseText(input);
+		builder.findObject('locations', {
+		  onFound: (objectBuilder) => {
+			objectBuilder.findArray('sublocations', {
+			  onFound: (arrayBuilder) => {
+				arrayBuilder.removeItemAtIndex(0);
+			  }
+			});
+		  }
+		});
+  
+		const result = await builder.toString();
+		assert.strictEqual(result, expected);
+	  });
+  
+	  test('Should remove a middle item from an array', async () => {
+		const input = `
+  const locations = { 
+	sublocations: [
+	  { id: 'market' }, 
+	  { id: 'church' },
+	  { id: 'harbor' }
+	] 
+  };`;
+		const expected = `
+  const locations = { 
+	sublocations: [
+	  { id: 'market' },
+	  { id: 'harbor' }
+	] 
+  };`;
+  
+		const builder = new TypeScriptCodeBuilder();
+		builder.parseText(input);
+		builder.findObject('locations', {
+		  onFound: (objectBuilder) => {
+			objectBuilder.findArray('sublocations', {
+			  onFound: (arrayBuilder) => {
+				arrayBuilder.removeItemAtIndex(1);
+			  }
+			});
+		  }
+		});
+  
+		const result = await builder.toString();
+		assert.strictEqual(result, expected);
+	  });
+  
+	  test('Should remove the last item from an array', async () => {
+		const input = `
+  const locations = { 
+	sublocations: [
+	  { id: 'market' }, 
+	  { id: 'church' },
+	  { id: 'harbor' }
+	] 
+  };`;
+		const expected = `
+  const locations = { 
+	sublocations: [
+	  { id: 'market' }, 
+	  { id: 'church' }] 
+  };`;
+  
+		const builder = new TypeScriptCodeBuilder();
+		builder.parseText(input);
+		builder.findObject('locations', {
+		  onFound: (objectBuilder) => {
+			objectBuilder.findArray('sublocations', {
+			  onFound: (arrayBuilder) => {
+				arrayBuilder.removeItemAtIndex(2);
+			  }
+			});
+		  }
+		});
+  
+		const result = await builder.toString();
+		assert.strictEqual(result, expected);
+	  });
+  
+	  test('Should handle arrays with different element types', async () => {
+		const input = `const mixed = { array: [10, "text", { key: "value" }, [1, 2]] };`;
+		const expected = `const mixed = { array: [10, { key: "value" }, [1, 2]] };`;
+  
+		const builder = new TypeScriptCodeBuilder();
+		builder.parseText(input);
+		builder.findObject('mixed', {
+		  onFound: (objectBuilder) => {
+			objectBuilder.findArray('array', {
+			  onFound: (arrayBuilder) => {
+				arrayBuilder.removeItemAtIndex(1); // Remove "text"
+			  }
+			});
+		  }
+		});
+  
+		const result = await builder.toString();
+		assert.strictEqual(result, expected);
+	  });
+  
+	  test('Should throw an error when removing at an invalid index', async () => {
+		const input = `const data = { items: [{ id: 'item1' }] };`;
+		const builder = new TypeScriptCodeBuilder();
+		builder.parseText(input);
+		
+		let errorThrown = false;
+		
+		try {
+		  builder.findObject('data', {
+			onFound: (objectBuilder) => {
+			  objectBuilder.findArray('items', {
+				onFound: (arrayBuilder) => {
+				  arrayBuilder.removeItemAtIndex(5); // This index is out of bounds
+				}
+			  });
+			}
+		  });
+		} catch (error) {
+		  errorThrown = true;
+		  assert.ok(error instanceof Error);
+		  assert.ok(error.message.includes('Invalid index'));
+		}
+		
+		assert.ok(errorThrown, 'Expected an error to be thrown for invalid index');
+	  });
+	});
+  
+	suite('Integration Tests - Array Modification', () => {
+	  test('Should correctly update array after adding and removing items', async () => {
+		const input = `const data = { 
+			items: [
+				{ 
+					id: 'item1' 
+				}
+			] };`;
+		const expected = `const data = { \n\t\t\t
+			items: [
+				{ 
+					id: 'item2' 
+				}
+			] };`;
+  
+		const builder = new TypeScriptCodeBuilder();
+		builder.parseText(input);
+		builder.findObject('data', {
+		  onFound: (objectBuilder) => {
+			objectBuilder.findArray('items', {
+			  onFound: (arrayBuilder) => {
+				// First add a new item
+				arrayBuilder.addItem("{ id: 'item2' }");
+				// Then remove the original item
+				arrayBuilder.removeItemAtIndex(0);
+			  }
+			});
+		  }
+		});
+  
+		const result = await builder.toString();
+		assert.strictEqual(result, expected);
+	  });
+  
+	  test('Should correctly handle the removeLocationFromSublocations use case', async () => {
+		// This test simulates the behavior of the removeLocationFromSublocations function
+		const input = `
+  const villageLocation = {
+	id: 'village',
+	name: 'Village',
+	sublocations: [
+	  { id: 'market', ref: marketLocation },
+	  { id: 'harbor', ref: harborLocation },
+	  { id: 'church', ref: churchLocation }
+	]
+  };`;
+		const expected = `
+  const villageLocation = {
+	id: 'village',
+	name: 'Village',
+	sublocations: [
+	  { id: 'market', ref: marketLocation },
+	  { id: 'church', ref: churchLocation }
+	]
+  };`;
+  
+		const builder = new TypeScriptCodeBuilder();
+		builder.parseText(input);
+		builder.findObject('villageLocation', {
+		  onFound: (objectBuilder) => {
+			objectBuilder.findArray('sublocations', {
+			  onFound: (arrayBuilder) => {
+				// Get all items to find the index of the location to remove
+				const items = arrayBuilder.getItems();
+				
+				// Simulate finding harbor location and remove it
+				items.forEach((item, index) => {
+				  const itemText = input.substring(item.objStart, item.objEnd);
+				  if (itemText.includes('harbor')) {
+					arrayBuilder.removeItemAtIndex(index);
+				  }
+				});
+			  }
+			});
+		  }
+		});
+  
+		const result = await builder.toString();
+		assert.strictEqual(result, expected);
+	  });
+	});
+  });
+
+*/

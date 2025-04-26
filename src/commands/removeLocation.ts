@@ -5,7 +5,8 @@ import { removeFile, removeObjectFromOtherObject, removeTextFromFile } from '../
 import { locationFilePostfix, locationsDir, worldStateFilePath } from '../Paths';
 import { registerFilePath } from '../Paths';
 import { containerObjectName, locationDataImportString, locationImportingString, locationImportingStringInLocationFolder } from './createLocation';
-import { TypeScriptCodeBuilder } from '../typescriptObjectParser/TypeScriptCodeBuilder';
+import { TypeScriptCodeBuilder } from '../typescriptObjectParser/ObjectParser';
+
 
 export const removeLocation = async (context: vscode.ExtensionContext) => {
     if (!vscode.workspace.workspaceFolders) {
@@ -92,8 +93,7 @@ async function removeLocationFromSublocations(locationToRemove: string): Promise
         let fileContent = await fs.promises.readFile(filePath, 'utf8');
         
         let wasModified = false;
-        const builder = new TypeScriptCodeBuilder();
-        builder.parseText(fileContent);
+        const builder = new TypeScriptCodeBuilder(fileContent);
 
         const locationId = path.basename(locationFile, locationFilePostfix);
         const locationObjectName = `${locationId}Location`;
@@ -105,7 +105,7 @@ async function removeLocationFromSublocations(locationToRemove: string): Promise
                 objectBuilder.findArray('sublocations', {
                     onFound: async (arrayBuilder) => {
                         // Get all items to find the index of the location to remove
-                        const items = arrayBuilder.getItems();
+                        const items = arrayBuilder.getArrayItems();
                         const locationToRemoveRef = `${locationToRemove}Location`;
                         
                         // Find and remove the item with the matching location reference

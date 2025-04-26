@@ -84,7 +84,7 @@ const setCorsHeaders = (req: Request, res: Response, next: NextFunction) => {
 
 export function registerRoutes(app: Express): void {
     const passageController = new PassageController();
-    const eventController = new EventController();
+    const eventController = new EventController(); 
 
     // Apply CORS middleware to all routes
     app.use(setCorsHeaders);

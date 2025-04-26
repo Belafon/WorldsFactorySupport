@@ -1,7 +1,6 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
-import { TypeScriptCodeBuilder } from './typescriptObjectParser/TypeScriptCodeBuilder';
-
+import { TypeScriptArrayBuilder, TypeScriptCodeBuilder, TypeScriptObjectBuilder } from './typescriptObjectParser/ObjectParser';
 
 export const addObjectToOtherObject = async (
     parentObjectName: string,
@@ -295,36 +294,27 @@ export async function addToObjectArrayProperty(
     itemToAdd: string,
     data: string
 ): Promise<string> {
-    const builder = new TypeScriptCodeBuilder();
-    builder.parseText(data);
+    const builder = new TypeScriptCodeBuilder(data);
 
     builder.findObject(objectName, {
-        onFound: (objectBuilder) => {
+        onFound: (objectBuilder: TypeScriptObjectBuilder) => {
             objectBuilder.findArray(propertyName, {
-                onFound: (arrayBuilder) => {
+                onFound: (arrayBuilder: TypeScriptArrayBuilder) => {
                     // If array exists, add new item to it using addItem
                     arrayBuilder.addItem(itemToAdd);
                 },
                 onNotFound: () => {
                     // If array doesn't exist, create it and add the item
-                    objectBuilder.addArray(propertyName, (arrayBuilder) => {
-                        arrayBuilder.addItem(itemToAdd);
-                    });
-                },
-                onError: (error) => {
-                    throw error;
+                    objectBuilder.setPropertyValue(propertyName, `[${itemToAdd}]`);
                 }
             });
         },
         onNotFound: () => {
             throw new Error(`Object ${objectName} not found`);
-        },
-        onError: (error) => {
-            throw error;
         }
     });
 
-    return builder.toString();
+    return await builder.toString();
 }
 
 export async function removeFromObjectArrayProperty(

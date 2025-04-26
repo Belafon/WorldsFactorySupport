@@ -39,8 +39,7 @@ export class EventController {
             let eventContent: string = fs.readFileSync(eventFilePath, 'utf-8');
 
             // Create a new code builder and parse the event file content.
-            const builder = new TypeScriptCodeBuilder();
-            builder.parseText(eventContent);
+            const builder = new TypeScriptCodeBuilder(eventContent);
 
             // Determine the variable name of the event object.
             // For example, if the eventId is "kingdom", the event object variable name is assumed to be "kingdomEvent".
@@ -118,8 +117,7 @@ export class EventController {
             let eventContent: string = fs.readFileSync(eventFilePath, 'utf-8');
     
             // Create a new code builder and parse the event file content
-            const builder = new TypeScriptCodeBuilder();
-            builder.parseText(eventContent);
+            const builder = new TypeScriptCodeBuilder(eventContent);
     
             // Determine the variable name of the event object
             const eventVariableName = `${eventId}Event`;
@@ -163,6 +161,7 @@ export class EventController {
 
     public async openEvent(req: Request, res: Response): Promise<void> {
         const eventId = req.params.eventId;
+        console.log('Opening event:', eventId);
     
         try {
             // Construct path to event file
