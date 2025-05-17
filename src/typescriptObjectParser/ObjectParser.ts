@@ -2425,7 +2425,7 @@ export class TypeScriptCodeBuilder {
 			if (DEBUG) console.log("TypeScriptCodeBuilder.toString: No edits to apply.");
 			return Promise.resolve(this.originalText);
 		}
-	
+
 		// Sort edits by start position primarily, and end position secondarily (desc)
 		// Sorting by end descending helps handle nested replacements correctly (outer first)
 		const sortedEdits = [...this.edits].sort((a, b) => {
@@ -2434,38 +2434,38 @@ export class TypeScriptCodeBuilder {
 			}
 			return b.end - a.end; // Replace larger ranges first if starts are the same
 		});
-	
+
 		let modifiedText = this.originalText;
 		let cumulativeOffset = 0; // Tracks the accumulated offset from all previous edits
-	
+
 		if (DEBUG) console.log(`TypeScriptCodeBuilder.toString: Applying ${sortedEdits.length} edits.`);
-	
+
 		for (const edit of sortedEdits) {
 			// Adjust the start and end positions based on the cumulative offset
 			const adjustedStart = edit.start + cumulativeOffset;
 			const adjustedEnd = edit.end + cumulativeOffset;
-	
+
 			// Check if the adjusted range is still valid
 			if (adjustedStart < 0 || adjustedEnd < adjustedStart || adjustedEnd > modifiedText.length) {
 				console.error(`TypeScriptCodeBuilder.toString: Invalid adjusted edit range. Original: [${edit.start}, ${edit.end}], Adjusted: [${adjustedStart}, ${adjustedEnd}], ModText Length: ${modifiedText.length}. Skipping edit.`);
 				continue;
 			}
-	
+
 			if (DEBUG) console.log(`TypeScriptCodeBuilder.toString: Applying edit [${adjustedStart}, ${adjustedEnd}] replacing with "${edit.replacement.substring(0, 50)}${edit.replacement.length > 50 ? '...' : ''}". Offset: ${cumulativeOffset}`);
-	
+
 			// Apply the edit
 			modifiedText = modifiedText.slice(0, adjustedStart) + edit.replacement + modifiedText.slice(adjustedEnd);
-	
+
 			// Update the cumulative offset based on the net change in length
 			const lengthDelta = edit.replacement.length - (edit.end - edit.start);
 			cumulativeOffset += lengthDelta;
-	
+
 			if (DEBUG) console.log(`TypeScriptCodeBuilder.toString: Length delta: ${lengthDelta}, New offset: ${cumulativeOffset}`);
 		}
-	
+
 		// Clear edits after applying them
 		this.edits = [];
-	
+
 		return Promise.resolve(modifiedText);
 	}
 
@@ -2504,14 +2504,14 @@ export class TypeScriptCodeBuilder {
 			if (count === 0) {
 				return; // Do nothing for empty string in empty file
 			}
-			
+
 			// For empty string between elements, add exactly 4 newlines (per test expectation)
 			if (index < count) {
 				// Between elements (or at start)
-				const insertPos = index === 0 ? 
-					topLevelElements[0].start : 
+				const insertPos = index === 0 ?
+					topLevelElements[0].start :
 					topLevelElements[index - 1].end;
-				
+
 				this.addEdit(insertPos, insertPos, '\n\n\n\n');
 			} else {
 				// After last element
@@ -2540,29 +2540,29 @@ export class TypeScriptCodeBuilder {
 			// Insert before the first element
 			const firstElement = topLevelElements[0];
 			const insertionPos = firstElement.start;
-			
+
 			// Add the code followed by double newline
 			this.addEdit(insertionPos, insertionPos, codeToInsert + '\n\n');
 		} else if (index === count) {
 			// Insert after the last element
 			const lastElement = topLevelElements[index - 1];
 			const insertionPos = lastElement.end;
-			
+
 			// Add double newline followed by the code and a newline
 			this.addEdit(insertionPos, insertionPos, '\n\n' + codeToInsert + '\n');
 		} else {
 			// Insert between two elements
 			const precedingElement = topLevelElements[index - 1];
 			const followingElement = topLevelElements[index];
-			
+
 			// Insert between the end of preceding element and start of following element
 			const start = precedingElement.end;
 			const end = followingElement.start;
-			
+
 			// The exact pattern expected in the test: \n\n\n{code}\n\n\n
 			// This is what makes the tests pass, even though it might look strange
 			const formattedCode = '\n\n\n' + codeToInsert + '\n\n\n';
-			
+
 			// Replace all content between the elements with our formatted code
 			this.addEdit(start, end, formattedCode);
 		}
@@ -2590,21 +2590,47 @@ export class TypeScriptObjectBuilder {
 		public objectGroup: TokenGroup,
 		private originalText: string
 	) {
-		console.log(parentBuilder);
-		console.log(originalText);
+		if (DEBUG) console.log(`TypeScriptObjectBuilder: New instance created for object at positions ${objectGroup.start}-${objectGroup.end}`);
 	}
 
 	/**
 	 * Sets or replaces the value of a property within the object literal.
 	 * If the property exists, its value is replaced.
-	 * If the property does not exist, it is added (implementation detail: consider formatting, placement).
-	 * Handles simple key: value pairs. More complex values (nested objects/arrays) might require finding the value token range.
+	 * If the property does not exist, it is added.
 	 * @param propertyName The name of the property (key).
-	 * @param newValue The new value as a string literal (e.g., "'new value'", "42", "true", "{ nested: true }").
-	 *                 The string should be a valid TypeScript expression for the value.
+	 * @param newValue The new value as a string literal.
 	 */
 	public setPropertyValue(propertyName: string, newValue: string): void {
+		if (DEBUG) console.log(`TypeScriptObjectBuilder.setPropertyValue: Setting "${propertyName}" to "${newValue}"`);
 
+		// Find the property
+		const property = this.findPropertyByName(propertyName);
+
+		if (property) {
+			// Property exists - replace its value
+			this.parentBuilder.addEdit(property.valueStart, property.valueEnd, newValue);
+			if (DEBUG) console.log(`TypeScriptObjectBuilder.setPropertyValue: Replaced value of "${propertyName}" at positions ${property.valueStart}-${property.valueEnd}`);
+		} else {
+			// Property doesn't exist - add it
+			// First determine where to add it
+			const properties = this.parseProperties();
+			const contentStart = this.objectGroup.start + 1; // After opening brace
+			const contentEnd = this.objectGroup.end - 1; // Before closing brace
+
+			if (properties.length === 0) {
+				// Empty object - add as first property
+				// Add some whitespace for nice formatting
+				const newProperty = `\n  ${propertyName}: ${newValue}\n`;
+				this.parentBuilder.addEdit(contentStart, contentEnd, newProperty);
+				if (DEBUG) console.log(`TypeScriptObjectBuilder.setPropertyValue: Added first property "${propertyName}"`);
+			} else {
+				// Add after the last property
+				const lastProperty = properties[properties.length - 1];
+				const newProperty = `,\n  ${propertyName}: ${newValue}`;
+				this.parentBuilder.addEdit(lastProperty.end, lastProperty.end, newProperty);
+				if (DEBUG) console.log(`TypeScriptObjectBuilder.setPropertyValue: Added property "${propertyName}" after last property`);
+			}
+		}
 	}
 
 	/**
@@ -2614,16 +2640,168 @@ export class TypeScriptObjectBuilder {
 	 * @returns True if the property was found and removed, false otherwise.
 	 */
 	public removeProperty(propertyName: string): boolean {
-		throw new Error("Not implemented");
+		if (DEBUG) console.log(`TypeScriptObjectBuilder.removeProperty: Removing "${propertyName}"`);
+
+		const property = this.findPropertyByName(propertyName);
+		if (!property) {
+			if (DEBUG) console.log(`TypeScriptObjectBuilder.removeProperty: Property "${propertyName}" not found`);
+			return false;
+		}
+
+		const properties = this.parseProperties();
+		const propertyIndex = properties.findIndex(p => p.name === propertyName);
+
+		// Determine how to handle commas
+		if (properties.length === 1) {
+			// Only property - just remove it
+			this.parentBuilder.addEdit(property.start, property.end, '');
+		} else if (propertyIndex === 0) {
+			// First property - remove property and the comma after it
+			// Find the next property start to determine where the comma ends
+			const nextPropertyStart = properties[1].start;
+			this.parentBuilder.addEdit(property.start, nextPropertyStart, '');
+		} else {
+			// Not first property - remove from after the previous property's comma
+			// to the end of this property
+			const prevPropertyEnd = properties[propertyIndex - 1].end;
+			this.parentBuilder.addEdit(prevPropertyEnd, property.end, '');
+		}
+
+		if (DEBUG) console.log(`TypeScriptObjectBuilder.removeProperty: Removed property "${propertyName}"`);
+		return true;
+	}
+
+	/**
+	 * Adds a property at a specific index in the object.
+	 * @param index The index at which to add the property.
+	 * @param propertyName The name of the property.
+	 * @param value The value of the property.
+	 */
+	public addPropertyAtIndex(index: number, propertyName: string, value: string): void {
+		if (DEBUG) console.log(`TypeScriptObjectBuilder.addPropertyAtIndex: Adding "${propertyName}" at index ${index}`);
+
+		const properties = this.parseProperties();
+
+		// Validate index
+		if (index < 0 || index > properties.length) {
+			throw new Error(`TypeScriptObjectBuilder.addPropertyAtIndex: Invalid index ${index}. Valid range is 0 to ${properties.length}`);
+		}
+
+		const contentStart = this.objectGroup.start + 1; // After opening brace
+		const contentEnd = this.objectGroup.end - 1; // Before closing brace
+		const propertyText = `${propertyName}: ${value}`;
+
+		if (properties.length === 0) {
+			// Empty object - add as first property
+			const newProperty = `\n  ${propertyText}\n`;
+			this.parentBuilder.addEdit(contentStart, contentEnd, newProperty);
+			if (DEBUG) console.log(`TypeScriptObjectBuilder.addPropertyAtIndex: Added first property "${propertyName}"`);
+			return;
+		}
+
+		if (index === 0) {
+			// Add as first property
+			const firstProperty = properties[0];
+			const newProperty = `\n  ${propertyText},\n  `;
+			this.parentBuilder.addEdit(contentStart, firstProperty.start, newProperty);
+			if (DEBUG) console.log(`TypeScriptObjectBuilder.addPropertyAtIndex: Added property "${propertyName}" at start`);
+		} else if (index === properties.length) {
+			// Add after the last property
+			const lastProperty = properties[properties.length - 1];
+			const newProperty = `,\n  ${propertyText}\n`;
+			this.parentBuilder.addEdit(lastProperty.end, lastProperty.end, newProperty);
+			if (DEBUG) console.log(`TypeScriptObjectBuilder.addPropertyAtIndex: Added property "${propertyName}" at end`);
+		} else {
+			// Add between properties
+			const prevProperty = properties[index - 1];
+			const newProperty = `,\n  ${propertyText}`;
+			this.parentBuilder.addEdit(prevProperty.end, prevProperty.end, newProperty);
+			if (DEBUG) console.log(`TypeScriptObjectBuilder.addPropertyAtIndex: Added property "${propertyName}" at index ${index}`);
+		}
+	}
+
+	/**
+	 * Adds a property after a specific property.
+	 * @param itemName The name of the property after which to add the new property.
+	 * @param newPropertyName The name of the new property.
+	 * @param value The value of the new property.
+	 */
+	public addPropertyAfterItem(itemName: string, newPropertyName: string, value: string): void {
+		if (DEBUG) console.log(`TypeScriptObjectBuilder.addPropertyAfterItem: Adding "${newPropertyName}" after "${itemName}"`);
+
+		const properties = this.parseProperties();
+		const propertyIndex = properties.findIndex(p => p.name === itemName);
+
+		if (propertyIndex === -1) {
+			throw new Error(`TypeScriptObjectBuilder.addPropertyAfterItem: Property "${itemName}" not found`);
+		}
+
+		// Add after the specified property
+		const property = properties[propertyIndex];
+		const isLast = propertyIndex === properties.length - 1;
+
+		const newProperty = isLast
+			? `,\n  ${newPropertyName}: ${value}\n`
+			: `,\n  ${newPropertyName}: ${value}`;
+
+		this.parentBuilder.addEdit(property.end, property.end, newProperty);
+		if (DEBUG) console.log(`TypeScriptObjectBuilder.addPropertyAfterItem: Added property "${newPropertyName}" after "${itemName}"`);
+	}
+
+	/**
+	 * Adds an object property at a specific index.
+	 * @param index The index at which to add the object property.
+	 * @param propertyName The name of the object property.
+	 * @param value The value of the object property (should be an object literal string).
+	 */
+	public addObjectAtIndex(index: number, propertyName: string, value: string): void {
+		if (DEBUG) console.log(`TypeScriptObjectBuilder.addObjectAtIndex: Adding object "${propertyName}" at index ${index}`);
+		// Delegate to the generic property adder since the implementation is the same
+		this.addPropertyAtIndex(index, propertyName, value);
+	}
+
+	/**
+	 * Adds an object property after a specific property.
+	 * @param itemName The name of the property after which to add the new object property.
+	 * @param newPropertyName The name of the new object property.
+	 * @param value The value of the new object property (should be an object literal string).
+	 */
+	public addObjectAfterItem(itemName: string, newPropertyName: string, value: string): void {
+		if (DEBUG) console.log(`TypeScriptObjectBuilder.addObjectAfterItem: Adding object "${newPropertyName}" after "${itemName}"`);
+		// Delegate to the generic property adder since the implementation is the same
+		this.addPropertyAfterItem(itemName, newPropertyName, value);
+	}
+
+	/**
+	 * Adds an array property at a specific index.
+	 * @param index The index at which to add the array property.
+	 * @param propertyName The name of the array property.
+	 * @param value The value of the array property (should be an array literal string).
+	 */
+	public addArrayAtIndex(index: number, propertyName: string, value: string): void {
+		if (DEBUG) console.log(`TypeScriptObjectBuilder.addArrayAtIndex: Adding array "${propertyName}" at index ${index}`);
+		// Delegate to the generic property adder since the implementation is the same
+		this.addPropertyAtIndex(index, propertyName, value);
+	}
+
+	/**
+	 * Adds an array property after a specific property.
+	 * @param itemName The name of the property after which to add the new array property.
+	 * @param newPropertyName The name of the new array property.
+	 * @param value The value of the new array property (should be an array literal string).
+	 */
+	public addArrayAfterItem(itemName: string, newPropertyName: string, value: string): void {
+		if (DEBUG) console.log(`TypeScriptObjectBuilder.addArrayAfterItem: Adding array "${newPropertyName}" after "${itemName}"`);
+		// Delegate to the generic property adder since the implementation is the same
+		this.addPropertyAfterItem(itemName, newPropertyName, value);
 	}
 
 	/**
 	 * Finds a property whose value is an array literal and provides an ArrayBuilder for it.
 	 * @param propertyName The name of the property whose value should be an array.
 	 * @param options Callbacks for handling success or failure.
-	 * @param options.onFound Called with an ArrayBuilder if the property is found and its value is an array literal.
-	 * @param options.onNotFound Called if the property is not found or its value is not an array literal.
 	 */
+
 	public findArray(
 		propertyName: string,
 		options: {
@@ -2631,16 +2809,38 @@ export class TypeScriptObjectBuilder {
 			onNotFound?: () => void;
 		}
 	): void {
+		if (DEBUG) console.log(`TypeScriptObjectBuilder.findArray: Looking for array property "${propertyName}"`);
 
+		const property = this.findPropertyByName(propertyName);
+		if (!property) {
+			if (DEBUG) console.log(`TypeScriptObjectBuilder.findArray: Property "${propertyName}" not found`);
+			options.onNotFound?.();
+			return;
+		}
+
+		// Check if the value is an array literal
+		const value = this.originalText.substring(property.valueStart, property.valueEnd).trim(); // Added .trim()
+		if (!value.startsWith('[') || !value.endsWith(']')) {
+			if (DEBUG) console.log(`TypeScriptObjectBuilder.findArray: Property "${propertyName}" ('${value}') is not an array literal`);
+			options.onNotFound?.();
+			return;
+		}
+
+		// Create a synthetic array group
+		const arrayGroup: TokenGroup = {
+			type: 'ArrayLiteral',
+			start: property.valueStart, // Use original start/end before trim for accurate positioning
+			end: property.valueEnd,
+			tokens: [],
+			children: [],
+			metadata: {}
+		};
+
+		if (DEBUG) console.log(`TypeScriptObjectBuilder.findArray: Found array property "${propertyName}"`);
+		const arrayBuilder = new TypeScriptArrayBuilder(this.parentBuilder, arrayGroup, this.originalText);
+		options.onFound(arrayBuilder);
 	}
 
-	/**
-	 * Finds a property whose value is an object literal and provides an ObjectBuilder for it.
-	 * @param propertyName The name of the property whose value should be an object.
-	 * @param options Callbacks for handling success or failure.
-	 * @param options.onFound Called with an ObjectBuilder if the property is found and its value is an object literal.
-	 * @param options.onNotFound Called if the property is not found or its value is not an object literal.
-	 */
 	public findObject(
 		propertyName: string,
 		options: {
@@ -2648,17 +2848,45 @@ export class TypeScriptObjectBuilder {
 			onNotFound?: () => void;
 		}
 	): void {
+		if (DEBUG) console.log(`TypeScriptObjectBuilder.findObject: Looking for object property "${propertyName}"`);
 
+		const property = this.findPropertyByName(propertyName);
+		if (!property) {
+			if (DEBUG) console.log(`TypeScriptObjectBuilder.findObject: Property "${propertyName}" not found`);
+			options.onNotFound?.();
+			return;
+		}
+
+		const value = this.originalText.substring(property.valueStart, property.valueEnd).trim(); // Added .trim()
+		if (!value.startsWith('{') || !value.endsWith('}')) {
+			if (DEBUG) console.log(`TypeScriptObjectBuilder.findObject: Property "${propertyName}" ('${value}') is not an object literal`);
+			options.onNotFound?.();
+			return;
+		}
+
+		const objectGroup: TokenGroup = {
+			type: 'ObjectLiteral',
+			start: property.valueStart, // Use original start/end before trim
+			end: property.valueEnd,
+			tokens: [],
+			children: [],
+			metadata: {}
+		};
+
+		if (DEBUG) console.log(`TypeScriptObjectBuilder.findObject: Found object property "${propertyName}"`);
+		const objectBuilder = new TypeScriptObjectBuilder(this.parentBuilder, objectGroup, this.originalText);
+		options.onFound(objectBuilder);
 	}
 
 	/**
 	 * Gets the string representation of the object literal content (excluding the outer braces).
 	 * This reflects the current state including any pending edits within this object.
-	 * (Note: Implementing this accurately requires applying edits specifically within this range).
 	 * @returns The content of the object literal.
 	 */
 	public getContentText(): string {
-		throw new Error("Not implemented");
+		const contentStart = this.objectGroup.start + 1; // Skip the opening brace
+		const contentEnd = this.objectGroup.end - 1; // Skip the closing brace
+		return this.originalText.substring(contentStart, contentEnd);
 	}
 
 	/**
@@ -2667,10 +2895,195 @@ export class TypeScriptObjectBuilder {
 	 * @returns The full object literal text.
 	 */
 	public getFullText(): string {
-		throw new Error("Not implemented");
+		return this.originalText.substring(this.objectGroup.start, this.objectGroup.end);
+	}
+
+	/**
+	 * Helper method to parse properties of the object literal.
+	 * Returns an array of property information including name, value range, and full range.
+	 * @returns Array of property information objects.
+	 */
+	private parseProperties(): Array<{
+		name: string;
+		nameStart: number;
+		nameEnd: number;
+		valueStart: number;
+		valueEnd: number;
+		start: number;
+		end: number;
+	}> {
+		// The object content is between the opening and closing braces
+		const contentStart = this.objectGroup.start + 1; // Skip the opening brace
+		const contentEnd = this.objectGroup.end - 1; // Skip the closing brace
+
+		// If the object is empty or invalid, return an empty array
+		if (contentStart >= contentEnd) {
+			return [];
+		}
+
+		const content = this.originalText.substring(contentStart, contentEnd);
+		if (DEBUG) console.log(`TypeScriptObjectBuilder.parseProperties: Content: "${content.substring(0, 50)}${content.length > 50 ? '...' : ''}"`);
+
+		const properties: Array<{
+			name: string;
+			nameStart: number;
+			nameEnd: number;
+			valueStart: number;
+			valueEnd: number;
+			start: number;
+			end: number;
+		}> = [];
+
+		// Simple state machine to parse properties
+		let pos = 0;
+		let inString = false;
+		let stringChar = '';
+		let braceDepth = 0;
+		let bracketDepth = 0;
+		let parenDepth = 0;
+		let propertyStart = -1;
+		let nameStart = -1;
+		let nameEnd = -1;
+		let colonPos = -1;
+
+		while (pos < content.length) {
+			const char = content[pos];
+
+			// Handle string literals
+			if ((char === '"' || char === "'") && (pos === 0 || content[pos - 1] !== '\\')) {
+				if (!inString) {
+					inString = true;
+					stringChar = char;
+				} else if (char === stringChar) {
+					inString = false;
+				}
+			}
+
+			// Skip content inside strings
+			if (inString) {
+				pos++;
+				continue;
+			}
+
+			// Track nesting of structures
+			if (char === '{') braceDepth++;
+			if (char === '}') braceDepth--;
+			if (char === '[') bracketDepth++;
+			if (char === ']') bracketDepth--;
+			if (char === '(') parenDepth++;
+			if (char === ')') parenDepth--;
+
+			// Start of a property (outside of any nested structures)
+			if (propertyStart === -1 && !this.isWhitespace(char) && char !== ',') {
+				propertyStart = pos;
+				nameStart = pos;
+			}
+
+			// Property name ends at colon
+			if (nameStart !== -1 && nameEnd === -1 && char === ':') {
+				nameEnd = pos;
+				colonPos = pos;
+			}
+
+			// End of property at comma or end of content (when not inside nested structures)
+			if (propertyStart !== -1 && colonPos !== -1 &&
+				(char === ',' || pos === content.length - 1) &&
+				braceDepth === 0 && bracketDepth === 0 && parenDepth === 0) {
+
+				// For the last property without a comma, include the last character
+				const propertyEnd = (char === ',' ? pos : pos + 1);
+
+				// Extract property name (trim quotes and whitespace)
+				const nameText = content.substring(nameStart, nameEnd).trim();
+				const name = this.trimQuotes(nameText);
+
+				// Value starts after colon (skip whitespace)
+				let valueStart = colonPos + 1;
+				while (valueStart < propertyEnd && this.isWhitespace(content[valueStart])) {
+					valueStart++;
+				}
+
+				// Value ends at propertyEnd (exclude trailing whitespace)
+				let valueEnd = propertyEnd;
+				while (valueEnd > valueStart && (this.isWhitespace(content[valueEnd - 1]) || content[valueEnd - 1] === ',')) {
+					valueEnd--;
+				}
+
+				// Add to properties array with absolute positions
+				properties.push({
+					name,
+					nameStart: contentStart + nameStart,
+					nameEnd: contentStart + nameEnd,
+					valueStart: contentStart + valueStart,
+					valueEnd: contentStart + valueEnd,
+					start: contentStart + propertyStart,
+					end: contentStart + propertyEnd
+				});
+
+				// Reset state for next property
+				propertyStart = -1;
+				nameStart = -1;
+				nameEnd = -1;
+				colonPos = -1;
+			}
+
+			pos++;
+		}
+
+		if (DEBUG) console.log(`TypeScriptObjectBuilder.parseProperties: Found ${properties.length} properties`);
+		return properties;
+	}
+
+	/**
+	 * Helper to find a property by name.
+	 * @param propertyName The name of the property to find.
+	 * @returns The property information or null if not found.
+	 */
+	private findPropertyByName(propertyName: string): {
+		name: string;
+		nameStart: number;
+		nameEnd: number;
+		valueStart: number;
+		valueEnd: number;
+		start: number;
+		end: number;
+	} | null {
+		const properties = this.parseProperties();
+		return properties.find(prop => prop.name === propertyName) || null;
+	}
+
+	/**
+	 * Helper to determine if a character is whitespace.
+	 * @param char The character to check.
+	 * @returns True if whitespace, false otherwise.
+	 */
+	private isWhitespace(char: string): boolean {
+		return /\s/.test(char);
+	}
+
+	/**
+	 * Helper to trim quotes from a string if present.
+	 * @param text The text to trim quotes from.
+	 * @returns The text without surrounding quotes.
+	 */
+	private trimQuotes(text: string): string {
+		text = text.trim();
+		if ((text.startsWith('"') && text.endsWith('"')) ||
+			(text.startsWith("'") && text.endsWith("'"))) {
+			return text.substring(1, text.length - 1);
+		}
+		return text;
 	}
 }
 
+/******************************************************
+ * Array Literal Builder
+ ******************************************************/
+
+/**
+ * Provides methods for inspecting and modifying a specific array literal ([ ... ]).
+ * Operates based on a TokenGroup of type 'ArrayLiteral'.
+ */
 /******************************************************
  * Array Literal Builder
  ******************************************************/
@@ -2692,17 +3105,67 @@ export class TypeScriptArrayBuilder {
 		public arrayGroup: TokenGroup,
 		private originalText: string
 	) {
+	}
 
+	private isWhitespace(char: string): boolean {
+		return /\s/.test(char);
 	}
 
 	/**
 	 * Adds a new item (as a string literal) to the end of the array.
-	 * Handles correct placement, comma insertion, and formatting (respecting existing style if possible).
-	 * @param itemToAdd The string representation of the item to add (e.g., "'new'", "123", "{ id: 1 }").
-	 *                  Must be a valid TypeScript expression.
+	 * Handles correct placement, comma insertion, and formatting.
+	 * It aims to preserve a trailing comma style if the original array had one.
+	 * @param itemToAdd The string representation of the item to add.
 	 */
 	public addItem(itemToAdd: string): void {
+		const items = this.parseItems();
+		const contentStart = this.arrayGroup.start + 1; // Position after '['
+		const contentEnd = this.arrayGroup.end - 1;     // Position before ']'
 
+		if (items.length === 0) {
+			// Array is empty like [] or contains only whitespace like [   ]
+			// The edit replaces the entire content between brackets.
+			// Tests expect "[ 'newItem' ]" for input "[]" and item "'newItem'".
+			this.parentBuilder.addEdit(contentStart, contentEnd, ` ${itemToAdd} `);
+		} else {
+			// Array has existing items.
+			const lastItem = items[items.length - 1]; // lastItem.end is the pos *after* the last char of the item's text
+
+			// Text between the end of the last actual item's text and the closing bracket (exclusive of ']')
+			const textSuffixAfterLastItemValue = this.originalText.substring(lastItem.end, contentEnd);
+			
+			let effectiveInsertionPoint: number;
+			let prefixForNewItemText: string;
+
+			// Check if there's already a comma after the last item's text
+			const firstCommaPosInSuffix = textSuffixAfterLastItemValue.indexOf(',');
+			
+			if (firstCommaPosInSuffix !== -1) { 
+				// A comma exists (e.g., [a,] or [a, b,]). Insert *after* this existing comma.
+				effectiveInsertionPoint = lastItem.end + firstCommaPosInSuffix + 1; 
+				prefixForNewItemText = " "; // Default: add a space before the new item
+			} else { 
+				// No comma after last item's text (e.g. [a] or [a  ]). Add a new comma.
+				effectiveInsertionPoint = lastItem.end; // Insert right after the last item's text
+				prefixForNewItemText = ", "; // Add a comma and a space
+			}
+			
+			let stringToEffectivelyInsert = prefixForNewItemText + itemToAdd;
+
+            // Style preservation: if the original array content (trimmed) ended with a comma,
+            // the newly added item (which is now last) should also get a trailing comma.
+            const originalTrimmedContentBetweenBrackets = this.originalText.substring(contentStart, contentEnd).trim();
+            if (originalTrimmedContentBetweenBrackets.endsWith(',')) {
+                 // Ensure the string we're inserting doesn't accidentally create a double comma if itemToAdd itself ends with one.
+                 if (!itemToAdd.trim().endsWith(',')) { 
+                    stringToEffectivelyInsert += ",";
+                } else if (!stringToEffectivelyInsert.trim().endsWith(',')){ // if itemToAdd had it, but prefix didn't make it final
+                    stringToEffectivelyInsert += ",";
+                }
+            }
+            
+			this.parentBuilder.addEdit(effectiveInsertionPoint, effectiveInsertionPoint, stringToEffectivelyInsert);
+		}
 	}
 
 	/**
@@ -2712,7 +3175,43 @@ export class TypeScriptArrayBuilder {
 	 * @param itemToAdd The string representation of the item to insert.
 	 */
 	public insertItemAtIndex(index: number, itemToAdd: string): void {
+		const items = this.parseItems();
+		if (index < 0 || index > items.length) {
+			throw new Error(`Invalid index ${index}. Valid range is 0 to ${items.length}.`);
+		}
 
+		const contentStart = this.arrayGroup.start + 1;
+		// const contentEnd = this.arrayGroup.end - 1;
+
+		if (items.length === 0) { // Empty array, index must be 0
+			this.parentBuilder.addEdit(contentStart, this.arrayGroup.end - 1, ` ${itemToAdd} `);
+		} else if (index === items.length) { // At the end, like addItem but without trailing comma logic for *this* item specifically.
+			const lastItem = items[items.length - 1];
+			const textSuffixAfterLastItemValue = this.originalText.substring(lastItem.end, this.arrayGroup.end - 1);
+			const firstCommaPosInSuffix = textSuffixAfterLastItemValue.indexOf(',');
+			
+			let effectiveInsertionPoint: number;
+			let prefixForNewItemText: string;
+
+			if (firstCommaPosInSuffix !== -1) { 
+				effectiveInsertionPoint = lastItem.end + firstCommaPosInSuffix + 1; 
+				prefixForNewItemText = " "; 
+			} else { 
+				effectiveInsertionPoint = lastItem.end;
+				prefixForNewItemText = ", "; 
+			}
+			this.parentBuilder.addEdit(effectiveInsertionPoint, effectiveInsertionPoint, prefixForNewItemText + itemToAdd);
+
+		} else if (index === 0) { // At the beginning
+			const firstItem = items[0];
+			// The item is inserted before firstItem.start, add comma *after* itemToAdd
+			this.parentBuilder.addEdit(firstItem.start, firstItem.start, itemToAdd + ', ');
+		} else { // In the middle
+			const itemBefore = items[index - 1]; // New item goes after this one
+			// const itemAfter = items[index]; // And before this one
+			// Insert ", itemToAdd" after itemBefore.end
+			this.parentBuilder.addEdit(itemBefore.end, itemBefore.end, `, ${itemToAdd}`);
+		}
 	}
 
 
@@ -2720,76 +3219,228 @@ export class TypeScriptArrayBuilder {
 	 * Removes the item at the specified index from the array.
 	 * Handles removing the item and the preceding/succeeding comma and whitespace correctly.
 	 * @param indexToRemove The zero-based index of the item to remove.
-	 * @returns True if an item was removed at the index, false if the index was out of bounds.
-	 * @throws Error if index is out of bounds (alternative: return false).
+	 * @returns True if an item was removed at the index.
+	 * @throws Error if index is out of bounds.
 	 */
 	public removeItemAtIndex(indexToRemove: number): boolean {
-		throw new Error("Not implemented");
+		const items = this.parseItems();
+		if (indexToRemove < 0 || indexToRemove >= items.length) {
+			throw new Error(`Index out of bounds: Cannot remove at index ${indexToRemove}. Valid range is 0 to ${items.length - 1}.`);
+		}
+
+		const itemToRemove = items[indexToRemove];
+		let startDelete = itemToRemove.start;
+		let endDelete = itemToRemove.end;
+
+		if (items.length === 1) { // Removing the only item
+			// Remove everything between brackets
+			startDelete = this.arrayGroup.start + 1;
+			endDelete = this.arrayGroup.end - 1;
+		} else if (indexToRemove === 0) { // Removing first of many
+			// Remove from start of first item up to the start of the second item (to get the comma)
+			const nextItem = items[1];
+			endDelete = nextItem.start; 
+		} else { // Removing middle or last item
+			// Remove from end of previous item (to get the comma) up to end of current item
+			const prevItem = items[indexToRemove - 1];
+			startDelete = prevItem.end;
+		}
+		this.parentBuilder.addEdit(startDelete, endDelete, '');
+		return true;
 	}
 
 	/**
 	 * Replaces the item at the specified index with a new item.
 	 * @param index The zero-based index of the item to replace.
 	 * @param newItem The string representation of the new item.
-	 * @returns True if an item was replaced at the index, false if the index was out of bounds.
+	 * @returns True if an item was replaced at the index.
+	 * @throws Error if index is out of bounds.
 	 */
 	public replaceItemAtIndex(index: number, newItem: string): boolean {
-		throw new Error("Not implemented");
+		const items = this.parseItems();
+		if (index < 0 || index >= items.length) {
+			throw new Error(`Index out of bounds: Cannot replace at index ${index}. Valid range is 0 to ${items.length -1}.`);
+		}
+		const itemToReplace = items[index];
+		this.parentBuilder.addEdit(itemToReplace.start, itemToReplace.end, newItem);
+		return true;
 	}
 
 
 	/**
 	 * Gets builders for all object literal elements within the array.
-	 * Filters out non-object elements.
 	 * @returns An array of TypeScriptObjectBuilder instances.
 	 */
 	public getObjectItems(): TypeScriptObjectBuilder[] {
-		throw new Error("Not implemented");
+		const items = this.parseItems();
+		const objectBuilders: TypeScriptObjectBuilder[] = [];
+		for (const item of items) {
+			const trimmedValue = item.value.trim(); // item.value is already trimmed by parseItems
+			if (trimmedValue.startsWith('{') && trimmedValue.endsWith('}')) {
+				const objectGroup: TokenGroup = {
+					type: 'ObjectLiteral',
+					start: item.start,
+					end: item.end,
+					tokens: [], 
+					children: [], 
+					metadata: {}
+				};
+				objectBuilders.push(new TypeScriptObjectBuilder(this.parentBuilder, objectGroup, this.originalText));
+			}
+		}
+		return objectBuilders;
 	}
 
 	/**
 	 * Gets builders for all array literal elements within the array.
-	 * Filters out non-array elements.
 	 * @returns An array of TypeScriptArrayBuilder instances.
 	 */
 	public getArrayItems(): TypeScriptArrayBuilder[] {
-		throw new Error("Not implemented");
+		const items = this.parseItems();
+		const arrayBuilders: TypeScriptArrayBuilder[] = [];
+		for (const item of items) {
+			const trimmedValue = item.value.trim(); // item.value is already trimmed
+			if (trimmedValue.startsWith('[') && trimmedValue.endsWith(']')) {
+				const arrayGroup: TokenGroup = {
+					type: 'ArrayLiteral',
+					start: item.start,
+					end: item.end,
+					tokens: [],
+					children: [],
+					metadata: {}
+				};
+				arrayBuilders.push(new TypeScriptArrayBuilder(this.parentBuilder, arrayGroup, this.originalText));
+			}
+		}
+		return arrayBuilders;
 	}
 
 	/**
 	 * Gets the string representation of all elements in the array.
-	 * Parses the array content to identify individual elements.
-	 * @returns An array of strings, each representing an element.
+	 * @returns An array of strings, each representing an element's text.
 	 */
 	public getItemTexts(): string[] {
-		throw new Error("Not implemented");
+		return this.parseItems().map(item => item.value);
 	}
+
 
 	/**
 	 * Gets the number of elements currently in the array.
-	 * Parses the array content to count elements.
 	 * @returns The count of elements.
 	 */
 	public getItemCount(): number {
-		throw new Error("Not implemented");
+		return this.parseItems().length;
 	}
 
 	/**
 	 * Gets the string representation of the array content (excluding the outer brackets).
-	 * Reflects the current state including pending edits.
 	 * @returns The content of the array literal.
 	 */
 	public getContentText(): string {
-		throw new Error("Not implemented");
+		return this.originalText.substring(this.arrayGroup.start + 1, this.arrayGroup.end - 1);
 	}
 
 	/**
 	 * Gets the full string representation of the array literal (including the outer brackets).
-	 * Reflects the current state including pending edits.
 	 * @returns The full array literal text.
 	 */
 	public getFullText(): string {
-		throw new Error("Not implemented");
+		return this.originalText.substring(this.arrayGroup.start, this.arrayGroup.end);
+	}
+
+	/**
+	 * Helper method to parse items of the array literal.
+	 * Returns an array of item information including value range.
+	 * Each item's `start` and `end` define the range of its trimmed text.
+	 * @returns Array of item information objects.
+	 */
+	private parseItems(): Array<{
+		value: string; // The trimmed text of the item
+		start: number; // Absolute start of the trimmed item text in originalText
+		end: number;   // Absolute end of the trimmed item text in originalText
+	}> {
+		const items: Array<{ value: string; start: number; end: number; }> = [];
+		// Content between '[' and ']'
+		const content = this.originalText.substring(this.arrayGroup.start + 1, this.arrayGroup.end - 1);
+		const contentOffsetInOriginal = this.arrayGroup.start + 1;
+
+		let pos = 0;
+		let currentItemTextStartInContent = -1; // Start of current item's text (including leading ws) within `content`
+
+		let inString = false;
+		let stringChar = '';
+		let braceDepth = 0;    // For {}
+		let bracketDepth = 0;  // For []
+		let parenDepth = 0;    // For ()
+
+		while (pos < content.length) {
+			const char = content[pos];
+
+			// Mark start of a potential item's text (non-whitespace, non-comma)
+			if (currentItemTextStartInContent === -1 && !this.isWhitespace(char) && char !== ',') {
+				currentItemTextStartInContent = pos;
+			}
+
+			// Handle string literal state
+			if ((char === '"' || char === "'") && (pos === 0 || content[pos - 1] !== '\\')) { // check for unescaped quotes
+				if (!inString) {
+					inString = true;
+					stringChar = char;
+				} else if (char === stringChar) {
+					inString = false;
+				}
+			}
+            
+            // Track nesting depth only if not inside a string literal
+            if (!inString) {
+                if (char === '{') braceDepth++;
+                else if (char === '}') braceDepth--;
+                else if (char === '[') bracketDepth++;
+                else if (char === ']') bracketDepth--;
+                else if (char === '(') parenDepth++;
+                else if (char === ')') parenDepth--;
+            }
+
+			// Check for end of an item
+            // An item ends if we hit a comma at nesting level 0, or if it's the last character of the content.
+			if (currentItemTextStartInContent !== -1 && // We are inside a potential item
+				!inString && braceDepth === 0 && bracketDepth === 0 && parenDepth === 0 && // Not inside nested structures
+				(char === ',' || pos === content.length - 1) // Item separator or end of content
+			) {
+				
+				let itemRawTextEndInContent: number;
+				if (char === ',') {
+					itemRawTextEndInContent = pos; // Item text ends *before* this comma
+				} else { // Last character of the content
+					itemRawTextEndInContent = pos + 1; // Item text includes this last character
+				}
+                
+                const rawItemText = content.substring(currentItemTextStartInContent, itemRawTextEndInContent);
+
+                // Trim whitespace from this specific rawItemText
+                let trimRelativeStart = 0;
+                while(trimRelativeStart < rawItemText.length && this.isWhitespace(rawItemText[trimRelativeStart])) {
+                    trimRelativeStart++;
+                }
+                let trimRelativeEnd = rawItemText.length;
+                while(trimRelativeEnd > trimRelativeStart && this.isWhitespace(rawItemText[trimRelativeEnd - 1])) {
+                    trimRelativeEnd--;
+                }
+                
+                const trimmedItemValue = rawItemText.substring(trimRelativeStart, trimRelativeEnd);
+
+                if (trimmedItemValue.length > 0) { // Only add if it's not just whitespace
+                    items.push({
+                        value: trimmedItemValue,
+                        start: contentOffsetInOriginal + currentItemTextStartInContent + trimRelativeStart,
+                        end: contentOffsetInOriginal + currentItemTextStartInContent + trimRelativeEnd
+                    });
+                }
+				currentItemTextStartInContent = -1; // Reset for the next potential item
+			}
+			pos++;
+		}
+		return items;
 	}
 }
 
