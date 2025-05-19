@@ -22,7 +22,7 @@ import { generateContentCharacters } from "./contentGenerators/charactersGenerat
 import { generateContentEvents } from "./contentGenerators/eventsGenerator";
 import { generateContentPassages } from "./contentGenerators/passagesGenerator";
 import { generateContentSideCharacters } from "./contentGenerators/sideCharactersGenerator";
-import { startNodeServerCommand, stopNodeServerCommand } from "./server/server";
+import { WFServer } from "./server/adapters/WFServerSetup";
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
@@ -178,14 +178,14 @@ export function activate(context: vscode.ExtensionContext) {
   const startNodeServerCommandD = vscode.commands.registerCommand(
     "WorldsFactorySupport.startNodeServer",
     async () => {
-      startNodeServerCommand();
+      WFServer.startServer();
     }
   );
 
   const stopNodeServerCommandD = vscode.commands.registerCommand(
     "WorldsFactorySupport.stopNodeServer",
     async () => {
-      stopNodeServerCommand();
+      WFServer.stopServer();
     }
   );
 

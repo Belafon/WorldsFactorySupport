@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
-import { TypeScriptArrayBuilder, TypeScriptCodeBuilder, TypeScriptObjectBuilder } from './typescriptObjectParser/ObjectParser';
+import { TypeScriptArrayBuilder, TypeScriptCodeBuilder, TypeScriptObjectBuilder } from 'wfnodeserver';
 
 export const addObjectToOtherObject = async (
     parentObjectName: string,

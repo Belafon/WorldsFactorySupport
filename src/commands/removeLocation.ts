@@ -5,7 +5,7 @@ import { removeFile, removeObjectFromOtherObject, removeTextFromFile } from '../
 import { locationFilePostfix, locationsDir, worldStateFilePath } from '../Paths';
 import { registerFilePath } from '../Paths';
 import { containerObjectName, locationDataImportString, locationImportingString, locationImportingStringInLocationFolder } from './createLocation';
-import { TypeScriptCodeBuilder } from '../typescriptObjectParser/ObjectParser';
+import { TypeScriptCodeBuilder } from 'wfnodeserver';
 
 
 export const removeLocation = async (context: vscode.ExtensionContext) => {

@@ -148,6 +148,7 @@
     "swagger-ui-dist": "^5.11.8",
     "swagger-ui-express": "^5.0.0",
     "ts-node": "^10.9.2",
-    "yamljs": "^0.3.0"
+    "yamljs": "^0.3.0",
+    "wfnodeserver": "^1.0.2"
   }
 }
