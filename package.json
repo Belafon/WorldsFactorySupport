@@ -2,8 +2,9 @@
   "name": "WorldsFactorySupport",
   "displayName": "WorldsFactorySupport",
   "description": "This is a tool that enhances the story creation process according the WorldsFactory structure.",
-  "version": "0.0.31",
+  "version": "0.0.32",
   "publisher": "worlds-factory-extension-1",
+  "license": "MIT",
   "icon": "resources/icon.jpeg",
   "engines": {
     "vscode": "^1.93.0"
@@ -84,6 +85,10 @@
         "title": "WF: Stop Node Server"
       },
       {
+        "command": "WorldsFactorySupport.showWFServerLogs",
+        "title": "WF: Show WFServer Logs"
+      },
+      {
         "command": "WorldsFactorySupport.generateContentLocation",
         "title": "WF: Generate Content - Location"
       },
@@ -117,18 +122,13 @@
     "pretest": "yarn run compile-tests && yarn run compile && yarn run lint",
     "check-types": "tsc --noEmit",
     "lint": "eslint src",
-    "test": "vscode-test",
-    "generate-api": "openapi-generator-cli generate -i dist/openapi.yaml -g typescript-axios -o src/server/generated",
-    "precompile": "yarn generate-api"
+    "test": "vscode-test"
   },
   "devDependencies": {
-    "@openapitools/openapi-generator-cli": "^2.15.3",
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
     "@types/mocha": "^10.0.10",
     "@types/node": "20.x",
-    "@types/swagger-ui-dist": "^3.30.5",
-    "@types/swagger-ui-express": "^4.1.7",
     "@types/vscode": "^1.93.0",
     "@types/yamljs": "^0.2.34",
     "@typescript-eslint/eslint-plugin": "^8.3.0",
@@ -148,7 +148,7 @@
     "swagger-ui-dist": "^5.11.8",
     "swagger-ui-express": "^5.0.0",
     "ts-node": "^10.9.2",
-    "yamljs": "^0.3.0",
-    "wfnodeserver": "^1.0.2"
+    "wfnodeserver": "v1.0.26",
+    "yamljs": "^0.3.0"
   }
 }

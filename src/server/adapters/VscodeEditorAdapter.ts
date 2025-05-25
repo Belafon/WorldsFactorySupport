@@ -1,6 +1,5 @@
 import * as vscode from 'vscode';
-import { EditorAdapter as WFEditorAdapterInterface } from 'wfnodeserver'; // Assuming 'wfnodeserver' is the package name
-
+import { EditorAdapter as WFEditorAdapterInterface } from 'wfnodeserver'; 
 export class VscodeEditorAdapter implements WFEditorAdapterInterface {
   async openFile(filePath: string): Promise<void> {
     try {

@@ -189,9 +189,16 @@ export function activate(context: vscode.ExtensionContext) {
     }
   );
 
-  context.subscriptions.push(stopNodeServerCommandD);
+  const showWFServerLogsCommand = vscode.commands.registerCommand(
+    "WorldsFactorySupport.showWFServerLogs",
+    () => {
+      WFServer.showLogs();
+    }
+  );
 
+  context.subscriptions.push(stopNodeServerCommandD);
   context.subscriptions.push(startNodeServerCommandD);
+  context.subscriptions.push(showWFServerLogsCommand);
 
   //activateEditor(context);
 }
