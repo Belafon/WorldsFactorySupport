@@ -34,7 +34,6 @@ export class WFServerSetup {
     }
 
     const editorAdapter = new VscodeEditorAdapter();
-    const fileSystemAdapter = new VscodeFileSystemAdapter();
     const workspaceAdapter = new VscodeWorkspaceAdapter();
 
     wfConfig.setEditorAdapter(editorAdapter);
@@ -47,38 +46,6 @@ export class WFServerSetup {
 
     // Configure the WF Utilities logger with VS Code adapter
     this.configureWFUtilitiesLogger();
-
-    // IMPORTANT: Addressing the sync/async mismatch for FileSystem
-    // The VscodeFileSystemAdapter uses async methods due to VS Code's async FS API.
-    // The WFNodeServer's IFileSystem interface expects synchronous methods.
-    // This line will cause a type error if `WFFileSystemInterface` has strict sync signatures
-    // and `VscodeFileSystemAdapter` has async signatures (e.g. `Promise<string>` vs `string`).
-    //
-    // To make this work, you would typically:
-    // 1. Modify WFNodeServer to accept an asynchronous FileSystem adapter interface.
-    // 2. Or, if WFNodeServer *can* somehow handle promises returned by these methods
-    //    (unlikely without internal async/await), you might cast:
-    //    `wfConfig.setFileSystem(fileSystemAdapter as any as WFFileSystemInterface);`
-    //    This bypasses type checking and relies on the library's internals.
-    //
-    // For now, we'll assume you'll handle the type discrepancy or modify the library.
-    // If direct assignment fails due to type mismatch (sync vs async methods),
-    // you'd need to cast `fileSystemAdapter as any` or similar, understanding the risks.
-    try {
-      wfConfig.setFileSystem(fileSystemAdapter as any as WFFileSystemInterface);
-      // The `as any as WFFileSystemInterface` is a strong type assertion to bypass
-      // the likely mismatch between the synchronous interface and our async adapter.
-      // This is a workaround and indicates a fundamental incompatibility that
-      // ideally should be resolved by making WFNodeServer's IFileSystem async-aware.
-      console.log('[WFServerSetup] Custom FileSystemAdapter set (with potential sync/async mismatch).');
-      this.loggerAdapter.info('Custom FileSystemAdapter set (with potential sync/async mismatch).');
-    } catch (error) {
-      console.error('[WFServerSetup] Error setting FileSystemAdapter. This is likely due to the sync/async incompatibility:', error);
-      console.error('[WFServerSetup] The VscodeFileSystemAdapter is async, but WFNodeServer likely expects a sync IFileSystem.');
-      this.loggerAdapter.error('Error setting FileSystemAdapter. This is likely due to the sync/async incompatibility:', error);
-      this.loggerAdapter.error('The VscodeFileSystemAdapter is async, but WFNodeServer likely expects a sync IFileSystem.');
-      // Optionally re-throw or handle this critical configuration failure
-    }
 
     this.isConfigured = true;
   }
