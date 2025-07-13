@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
-import { TypeScriptArrayBuilder, TypeScriptCodeBuilder, TypeScriptObjectBuilder } from 'wfnodeserver';
+import { TypeScriptArrayBuilder, TypeScriptCodeBuilder } from 'wfnodeserver';
 
 export const addObjectToOtherObject = async (
     parentObjectName: string,
@@ -297,7 +297,7 @@ export async function addToObjectArrayProperty(
     const builder = new TypeScriptCodeBuilder(data);
 
     builder.findObject(objectName, {
-        onFound: (objectBuilder: TypeScriptObjectBuilder) => {
+        onFound: (objectBuilder) => {
             objectBuilder.findArray(propertyName, {
                 onFound: (arrayBuilder: TypeScriptArrayBuilder) => {
                     // If array exists, add new item to it using addItem

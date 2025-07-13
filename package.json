@@ -2,7 +2,7 @@
   "name": "WorldsFactorySupport",
   "displayName": "WorldsFactorySupport",
   "description": "This is a tool that enhances the story creation process according the WorldsFactory structure.",
-  "version": "0.0.35",
+  "version": "0.0.36",
   "publisher": "worlds-factory-extension-1",
   "license": "MIT",
   "icon": "resources/icon.jpeg",
@@ -148,7 +148,7 @@
     "swagger-ui-dist": "^5.11.8",
     "swagger-ui-express": "^5.0.0",
     "ts-node": "^10.9.2",
-    "wfnodeserver": "v1.0.37",
+    "wfnodeserver": "v1.0.38",
     "yamljs": "^0.3.0"
   }
 }
